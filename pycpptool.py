@@ -1,4 +1,5 @@
 import sys
+import os
 import platform
 import pathlib
 from typing import Dict, List, Optional, Any
@@ -29,9 +30,13 @@ class Item_Struct:
 
 
 class ParsedItem:
-    def __init__(self, key: int, filename: str) -> None:
+    def __init__(self, key: int, path: str) -> None:
+        if platform.system() == 'Windows':
+            path = path.lower()
+
         self.key = key
-        self.filename = filename
+        self.path = path
+        self.filename = os.path.basename(self.path)
         self.content: Any = None
 
     def __str__(self) -> str:
@@ -76,7 +81,7 @@ class Parser:
             return None
 
         # new item
-        item = ParsedItem(cursor.hash, cursor.location.file)
+        item = ParsedItem(cursor.hash, cursor.location.file.name)
         self.item_map[cursor.hash] = item
         self.parsed_items.append(item)
 
@@ -102,9 +107,9 @@ class Parser:
 
         # children...
         if item.content:
-            print(f'{"  "*level}{item}')
+            print(f'{item.filename}:{"  "*level}{item}')
         else:
-            print(f'{"  "*level}{cursor.kind}')
+            print(f'{item.filename}:{"  "*level}{cursor.kind}')
             for child in cursor.get_children():
                 self.traverse(child, level+1)
 
