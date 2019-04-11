@@ -1,7 +1,9 @@
 {
     "cSpell.words": [
         "cindex",
+        "decl",
         "llvm",
-        "pycpptool"
+        "pycpptool",
+        "struct"
     ]
 }
