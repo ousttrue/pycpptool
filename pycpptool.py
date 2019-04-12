@@ -2,7 +2,7 @@ import sys
 import os
 import platform
 import pathlib
-from typing import Dict, List, Optional, Any, Set
+from typing import Dict, List, Optional, Any, Set, Tuple
 from jinja2 import Template
 from clang import cindex
 
@@ -61,6 +61,24 @@ class Item_Union(Item_Struct):
         self.struct = 'union'
 
 
+class Item_MacroDefine(ItemBase):
+    def __init__(self, name: str, value: str) -> None:
+        super().__init__(name)
+        self.value = value
+
+    def __str__(self) -> str:
+        return f'#define {self.name} = {self.value}'
+
+
+class Item_Include(ItemBase):
+    def __init__(self, include: str) -> None:
+        super().__init__('#include')
+        self.include = include
+
+    def __str__(self) -> str:
+        return f'#include {self.include}'
+
+
 class ParsedItem:
     def __init__(self, key: int, path: str) -> None:
         if platform.system() == 'Windows':
@@ -69,13 +87,13 @@ class ParsedItem:
         self.key = key
         self.path = path
         self.filename = os.path.basename(self.path)
-        self.content: ItemBase = None
+        self.content: Optional[ItemBase] = None
 
     def __str__(self) -> str:
         if self.content:
-            return f'{self.key}: {self.content}'
+            return f'{self.key}: {self.filename}: {self.content}'
         else:
-            return f'{self.key}'
+            return f'{self.key}: {self.filename}'
 
 
 class Parser:
@@ -137,25 +155,54 @@ class Parser:
         self.parsed_items.append(item)
 
         # process
-        item.content = self._process_item(cursor)
+        next_child, content = self._process_item(cursor)
+        if content:
+            item.content = content
+            print(f'{"  "*level}{item}')
 
-        # children...
-        if item.content:
-            print(f'{item.filename}: {"  "*level}{item}')
-        else:
-            print(f'{item.filename}: {"  "*level}{cursor.kind}')
+        if next_child:
             for child in cursor.get_children():
                 self._traverse(child, level+1)
 
         return item
 
     def _process_item(self,
-                      cursor) -> Optional[ItemBase]:
-        if cursor.kind == cindex.CursorKind.TYPEDEF_DECL:
+                      cursor) -> Tuple[bool, Optional[ItemBase]]:
+        if cursor.kind == cindex.CursorKind.INCLUSION_DIRECTIVE:
+            tokens = [x.spelling for x in cursor.get_tokens()]
+            if '<' in tokens:
+                open = tokens.index('<')
+                return False, Item_Include(''.join(tokens[open+1:-1]))
+            else:
+                return False, Item_Include(tokens[-1][1:-1])
+
+        elif cursor.kind == cindex.CursorKind.MACRO_DEFINITION:
+            tokens = [x for x in cursor.get_tokens()]
+            if len(tokens) == 1:
+                # ex. #define __header__
+                return False, None
+            else:
+                return False, Item_MacroDefine(
+                    cursor.spelling, ' '.join(x.spelling for x in tokens[1:]))
+
+        elif cursor.kind == cindex.CursorKind.MACRO_INSTANTIATION:
+            tokens = [x.spelling for x in cursor.get_tokens()]
+            if tokens[0] == 'MIDL_INTERFACE':
+                # com interface
+                # todo
+                print(tokens)
+                return False, None
+            if len(tokens) == 1:
+                return False, None
+            # print(tokens)
+            # sys.exit(1)
+            return False, None
+
+        elif cursor.kind == cindex.CursorKind.TYPEDEF_DECL:
             tokens = [x.spelling for x in cursor.get_tokens()]
             if len(tokens) == 3:
-                # typedef float FLOAT
-                return Item_TypeDef(tokens[2], tokens[1])
+                # ex. typedef float FLOAT
+                return False, Item_TypeDef(tokens[2], tokens[1])
             elif len(tokens) < 3:
                 raise Exception(str(tokens))
             else:
@@ -163,17 +210,53 @@ class Parser:
                 count = len(children)
                 if count != 1:
                     raise Exception(str(children))
-
-                return Item_TypeDef(
+                if children[0].kind not in [
+                    cindex.CursorKind.TYPE_REF,
+                    cindex.CursorKind.STRUCT_DECL,
+                    cindex.CursorKind.ENUM_DECL,
+                ]:
+                    print(children[0].kind)
+                    raise Exception(str(children))
+                return False, Item_TypeDef(
                     tokens[-1], children[0].hash)
 
         elif cursor.kind == cindex.CursorKind.STRUCT_DECL:
-            return self._process_struct(cursor)
+            return False, self._process_struct(cursor)
 
-        return None
+        elif cursor.kind == cindex.CursorKind.ENUM_DECL:
+            # todo
+            return False, None
+
+        elif cursor.kind == cindex.CursorKind.FUNCTION_DECL:
+            # todo
+            return False, None
+
+        elif cursor.kind == cindex.CursorKind.VAR_DECL:
+            tokens = [x.spelling for x in cursor.get_tokens()]
+            if tokens[0] == 'extern':
+                return False, None
+            print(cursor.kind, tokens)
+            sys.exit(1)
+            return False, None
+
+        elif cursor.kind == cindex.CursorKind.UNEXPOSED_DECL:
+            tokens = [x.spelling for x in cursor.get_tokens()]
+            if not tokens:
+                return False, None
+            if tokens[0] == 'extern':
+                return True, None
+            print(cursor.kind, tokens)
+            sys.exit(1)
+            return False, None
+
+        tokens = [x.spelling for x in cursor.get_tokens()]
+        print(cursor.kind, tokens)
+        sys.exit(1)
+        return False, None
 
     def _process_struct(self,
-                        cursor: cindex.Cursor, level: int = 0) -> Item_Struct:
+                        cursor: cindex.Cursor,
+                        level=0) -> Item_Struct:
         if cursor.kind == cindex.CursorKind.STRUCT_DECL:
             struct = Item_Struct(cursor.spelling)
         elif cursor.kind == cindex.CursorKind.UNION_DECL:
@@ -192,10 +275,12 @@ class Parser:
                 # todo
                 continue
             elif f.kind == cindex.CursorKind.CXX_BASE_SPECIFIER:
+                # todo
                 continue
             elif f.kind == cindex.CursorKind.CXX_ACCESS_SPEC_DECL:
                 continue
             elif f.kind == cindex.CursorKind.CXX_METHOD:
+                # todo
                 continue
             else:
                 print(f.kind)
