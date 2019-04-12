@@ -4,11 +4,20 @@
     // 詳細情報は次を確認してください: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [{
-        "name": "Python: Current File (Integrated Terminal)",
-        "type": "python",
-        "request": "launch",
-        "program": "${workspaceFolder}/pycpptool.py",
-        "args": ["sample.h"],
-        "console": "integratedTerminal"
-    }]
+            "name": "Python: sample.h",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/pycpptool.py",
+            "args": ["sample.h"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: dxgi.h",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/pycpptool.py",
+            "args": ["C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/dxgi.h"],
+            "console": "integratedTerminal"
+        }
+    ]
 }
