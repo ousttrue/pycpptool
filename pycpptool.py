@@ -118,54 +118,6 @@ class Parser:
             name = name.lower()
         return name in self.include_headers
 
-    def parse(self, path: pathlib.Path) -> None:
-        if not path.exists():
-            raise FileNotFoundError(str(path))
-
-        if self.dll:
-            cindex.Config.set_library_file(str(self.dll))
-        index = cindex.Index.create()
-        translation_unit = index.parse(
-            str(path),
-            ['-x', 'c++'],
-            options=cindex.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD)
-
-        # skip root translation_unit
-        for child in translation_unit.cursor.get_children():
-            self._traverse(child)
-
-    def _traverse(self,
-                  cursor: cindex.Cursor, level: int = 0) -> Optional[ParsedItem]:
-        used = self.item_map.get(cursor.hash)
-        if used:
-            # already processed. skip
-            return used
-
-        if not cursor.location.file:
-            # skip
-            return None
-
-        if not self._is_target(cursor.location.file.name):
-            # skip
-            return None
-
-        # new item
-        item = ParsedItem(cursor.hash, cursor.location.file.name)
-        self.item_map[cursor.hash] = item
-        self.parsed_items.append(item)
-
-        # process
-        next_child, content = self._process_item(cursor)
-        if content:
-            item.content = content
-            print(f'{"  "*level}{item}')
-
-        if next_child:
-            for child in cursor.get_children():
-                self._traverse(child, level+1)
-
-        return item
-
     def _process_item(self,
                       cursor) -> Tuple[bool, Optional[ItemBase]]:
         if cursor.kind == cindex.CursorKind.INCLUSION_DIRECTIVE:
@@ -287,6 +239,60 @@ class Parser:
                 raise Exception()
             struct.fields.append(field)
         return struct
+
+    def _traverse(self,
+                  cursor: cindex.Cursor, level: int = 0) -> Optional[ParsedItem]:
+        used = self.item_map.get(cursor.hash)
+        if used:
+            # already processed. skip
+            return used
+
+        if not cursor.location.file:
+            # skip
+            return None
+
+        if not self._is_target(cursor.location.file.name):
+            # skip
+            return None
+
+        # new item
+        item = ParsedItem(cursor.hash, cursor.location.file.name)
+        self.item_map[cursor.hash] = item
+        self.parsed_items.append(item)
+
+        # process
+        next_child, content = self._process_item(cursor)
+        if content:
+            item.content = content
+            if isinstance(item.content, (Item_Include, Item_MacroDefine)):
+                pass
+            else:
+                print(f'{"  "*level}{item}')
+
+        if next_child:
+            for child in cursor.get_children():
+                self._traverse(child, level+1)
+
+        return item
+
+    def parse(self, path: pathlib.Path) -> None:
+        '''
+        parser entry point
+        '''
+        if not path.exists():
+            raise FileNotFoundError(str(path))
+
+        if self.dll:
+            cindex.Config.set_library_file(str(self.dll))
+        index = cindex.Index.create()
+        translation_unit = index.parse(
+            str(path),
+            ['-x', 'c++'],
+            options=cindex.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD)
+
+        # skip root translation_unit
+        for child in translation_unit.cursor.get_children():
+            self._traverse(child)
 
 
 def main() -> None:
