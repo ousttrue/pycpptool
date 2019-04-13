@@ -379,34 +379,41 @@ class Node:
         return self.value
 
 
-class StructMethod:
-    def __init__(self, name) -> None:
-        self.name = name
+class MethodParam(NamedTuple):
+    param_name: str
+    param_type: str
+
+
+class Method(Node):
+    def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
+        super().__init__(path, c)
+        for child in c.get_children():
+            raise(child.kind)
 
     def __str__(self) -> str:
         return f'{self.name}();'
 
 
-class StructField:
-    def __init__(self, field_name: str, field_type='') -> None:
-        self.field_name = field_name
-        self.field_type = field_type
-        self.fields: List[StructField] = []
+class StructNode(Node):
+    def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
+        super().__init__(path, c)
+        self.field_type = 'struct'
+        self.fields: List['StructNode'] = []
         self.iid: Optional[uuid.UUID] = None
         self.base = ''
-        self.methods: List[StructMethod] = []
+        self.methods: List[Method] = []
 
     def __str__(self) -> str:
         with io.StringIO() as f:
-            self.write_to(f)
+            self._write_to(f)
             return f.getvalue()
 
-    def write_to(self, f: TextIO, indent='') -> None:
+    def _write_to(self, f: TextIO, indent='') -> None:
         if self.field_type in ['struct', 'union']:
             if self.base:
-                name = f'{self.field_name}: {self.base}'
+                name = f'{self.name}: {self.base}'
             else:
-                name = self.field_name
+                name = self.name
 
             if self.iid:
                 f.write(f'{indent}interface {name}[{self.iid}]{{\n')
@@ -415,7 +422,7 @@ class StructField:
 
             child_indent = indent + '  '
             for field in self.fields:
-                field.write_to(f, child_indent)
+                field._write_to(f, child_indent)
                 f.write('\n')
 
             for method in self.methods:
@@ -426,20 +433,23 @@ class StructField:
         else:
             f.write(f'{indent}{self.field_type} {self.field_name};')
 
-    def parse(self, c: cindex.Cursor) -> None:
+    def _parse(self, c: cindex.Cursor) -> None:
         for child in c.get_children():
             if child.kind == cindex.CursorKind.FIELD_DECL:
                 typeref, literal = get_typeref(child)
-                field = StructField(
-                    child.spelling, typeref.spelling + ''.join(f'[{n}]' for n in literal))
+                field = StructNode(self.path, child)
+                field.field_type = (typeref.spelling +
+                                    ''.join(f'[{n}]' for n in literal))
                 self.fields.append(field)
             elif child.kind == cindex.CursorKind.STRUCT_DECL:
-                union = StructField(child.spelling, 'struct')
-                union.parse(child)
-                self.fields.append(union)
+                struct = StructNode(self.path, child)
+                struct.field_type = 'struct'
+                struct._parse(child)
+                self.fields.append(struct)
             elif child.kind == cindex.CursorKind.UNION_DECL:
-                union = StructField(child.spelling, 'union')
-                union.parse(child)
+                union = StructNode(self.path, child)
+                union.field_type = 'union'
+                union._parse(child)
                 self.fields.append(union)
             elif child.kind == cindex.CursorKind.UNEXPOSED_ATTR:
                 value = extract(child)
@@ -451,21 +461,11 @@ class StructField:
                     raise Exception()
                 self.base = typeref.referenced.spelling
             elif child.kind == cindex.CursorKind.CXX_METHOD:
-                self.methods.append(StructMethod(child.spelling))
+                self.methods.append(Method(self.path, child))
             elif child.kind == cindex.CursorKind.CXX_ACCESS_SPEC_DECL:
                 pass
             else:
                 raise Exception(child.kind)
-
-
-class StructNode(Node):
-    def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
-        super().__init__(path, c)
-        self.root = StructField(c.spelling, 'struct')
-        self.root.parse(c)
-
-    def __str__(self) -> str:
-        return f'{self.root}'
 
 
 class EnumValue(NamedTuple):
