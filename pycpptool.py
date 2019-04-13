@@ -315,13 +315,41 @@ class EnumNode(Node):
             return f.getvalue()
 
 
-def get_node(current: pathlib.Path, c: cindex.Cursor) -> Node:
+class TypedefNode(Node):
+    def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
+        super().__init__(path, c)
+        self.typedef_type = ''
+        children = [child for child in c.get_children()]
+        if len(children) != 1:
+            raise Exception('not 1')
+        typeref = children[0]
+        if typeref.kind in [
+            cindex.CursorKind.STRUCT_DECL,  # maybe forward decl
+            cindex.CursorKind.ENUM_DECL,
+            cindex.CursorKind.TYPE_REF,
+        ]:
+            self.typedef_type = typeref.spelling
+        else:
+            raise Exception(f'not TYPE_REF: {typeref.kind}')
+
+    def __str__(self) -> str:
+        return f'{self.name} = {self.typedef_type}'
+
+
+def get_node(current: pathlib.Path, c: cindex.Cursor) -> Optional[Node]:
     if c.kind == cindex.CursorKind.STRUCT_DECL:
         return StructNode(current, c)
     if c.kind == cindex.CursorKind.ENUM_DECL:
         return EnumNode(current, c)
     if c.kind == cindex.CursorKind.FUNCTION_DECL:
         return FunctionNode(current, c)
+    if c.kind == cindex.CursorKind.TYPEDEF_DECL:
+        node = TypedefNode(current, c)
+        if node.name == node.typedef_type:
+            return None
+        if 'struct ' + node.name == node.typedef_type:
+            return None
+        return node
     return Node(current, c)
 
 
@@ -349,7 +377,6 @@ def parse(ins: TextIO, path: pathlib.Path) -> None:
             return
 
         if c.kind in [
-            cindex.CursorKind.TYPEDEF_DECL,
             cindex.CursorKind.VAR_DECL,
             cindex.CursorKind.FUNCTION_TEMPLATE,
             cindex.CursorKind.CLASS_TEMPLATE,
@@ -375,6 +402,8 @@ def parse(ins: TextIO, path: pathlib.Path) -> None:
             value = extract(c)
 
         node = get_node(current, c)
+        if not node:
+            return
 
         if c.hash != c.canonical.hash:
             node.canonical = c.canonical.hash
@@ -390,6 +419,7 @@ def parse(ins: TextIO, path: pathlib.Path) -> None:
             cindex.CursorKind.UNION_DECL,
             cindex.CursorKind.ENUM_DECL,
             cindex.CursorKind.FUNCTION_DECL,
+            cindex.CursorKind.TYPEDEF_DECL,
         ]:
             raise Exception(f'unknown kind: {c.kind}')
 
