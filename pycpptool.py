@@ -76,18 +76,6 @@ def get_int(cursor: cindex.Cursor) -> int:
     return int(tokens[0], 16)
 
 
-def get_typeref(cursor: cindex.Cursor) -> Tuple[cindex.Cursor, List[cindex.Cursor]]:
-    children = [child for child in cursor.get_children()]
-    if children[0].kind != cindex.CursorKind.TYPE_REF:
-        raise Exception(f'not TYPE_REF: {children[0].kind}')
-    if len(children) == 1:
-        return (children[0], [])
-    elif len(children) >= 2:
-        return (children[0], [get_token(x) for x in children[1:]])
-    else:
-        raise Exception('no children')
-
-
 def _process_item(self,
                   cursor):
     tokens = [x.spelling for x in cursor.get_tokens()]
@@ -229,10 +217,11 @@ class StructNode(Node):
     def _parse(self, c: cindex.Cursor) -> None:
         for child in c.get_children():
             if child.kind == cindex.CursorKind.FIELD_DECL:
-                typeref, literal = get_typeref(child)
                 field = StructNode(self.path, child, False)
-                field.field_type = (typeref.spelling +
-                                    ''.join(f'[{n}]' for n in literal))
+                if child.type == cindex.TypeKind.TYPEDEF:
+                    field.field_type = get_typedef_type(child).spelling
+                else:
+                    field.field_type = child.type.spelling
                 self.fields.append(field)
             elif child.kind == cindex.CursorKind.STRUCT_DECL:
                 struct = StructNode(self.path, child)
@@ -247,10 +236,10 @@ class StructNode(Node):
                 if value.startswith('MIDL_INTERFACE("'):
                     self.iid = uuid.UUID(value[16:-2])
             elif child.kind == cindex.CursorKind.CXX_BASE_SPECIFIER:
-                typeref, literal = get_typeref(child)
-                if literal:
-                    raise Exception()
-                self.base = typeref.referenced.spelling
+                if child.type == cindex.TypeKind.TYPEDEF:
+                    self.base = get_typedef_type(child).spelling
+                else:
+                    self.base = child.type.spelling
             elif child.kind == cindex.CursorKind.CXX_METHOD:
                 self.methods.append(FunctionNode(self.path, child))
             elif child.kind == cindex.CursorKind.CXX_ACCESS_SPEC_DECL:
@@ -283,14 +272,15 @@ class EnumNode(Node):
             return f.getvalue()
 
 
-def get_typedef_type(c: cindex.Cursor) -> Optional[cindex.Cursor]:
+def get_typedef_type(c: cindex.Cursor) -> cindex.Cursor:
+    if c.type.kind != cindex.TypeKind.TYPEDEF:
+        raise Exception('not TYPEDEF')
     children = [child for child in c.get_children()]
-    if not children:
-        return None
     if len(children) != 1:
         raise Exception('not 1')
     typeref = children[0]
     if typeref.kind not in [
+        cindex.CursorKind.TYPE_REF,
         cindex.CursorKind.STRUCT_DECL,  # maybe forward decl
         cindex.CursorKind.ENUM_DECL,
         cindex.CursorKind.TYPE_REF,
@@ -302,9 +292,7 @@ def get_typedef_type(c: cindex.Cursor) -> Optional[cindex.Cursor]:
 class TypedefNode(Node):
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         super().__init__(path, c)
-        typedef_type = get_typedef_type(c)
-        if typedef_type:
-            self.typedef_type = typedef_type.spelling
+        self.typedef_type = get_typedef_type(c).spelling
 
     def is_valid(self) -> bool:
         if not self.typedef_type:
@@ -334,7 +322,16 @@ def get_node(current: pathlib.Path, c: cindex.Cursor) -> Optional[Node]:
     return Node(current, c)
 
 
-def parse(ins: TextIO, path: pathlib.Path) -> None:
+def normalize(src: str) -> str:
+    if platform.system() == 'Windows':
+        return src.lower()
+    return src
+
+
+def parse(ins: TextIO, path: pathlib.Path, include: List[str]) -> None:
+
+    include = [normalize(x) for x in include]
+
     path_map: Dict[str, pathlib.Path] = {}
     used: Dict[int, Node] = {}
 
@@ -347,7 +344,11 @@ def parse(ins: TextIO, path: pathlib.Path) -> None:
             current = pathlib.Path(c.location.file.name)
             path_map[c.location.file.name] = current
             # print(path)
-        if current != path:
+        if current == path:
+            pass
+        elif normalize(current.name) in include:
+            pass
+        else:
             return
 
         if c.hash in used:
@@ -399,11 +400,9 @@ def parse(ins: TextIO, path: pathlib.Path) -> None:
 
     # print
     for k, v in used.items():
-        if v.path != path:
-            continue
         if v.is_forward:
             continue
-        print(v)
+        print(f'{v.path.name}:{v}')
 
 
 def show(f: TextIO, path: pathlib.Path) -> None:
@@ -461,7 +460,7 @@ def main() -> None:
     if args.debug:
         show(sys.stdout, path)
     else:
-        parse(sys.stdout, path)
+        parse(sys.stdout, path, args.include)
 
 
 if __name__ == '__main__':
