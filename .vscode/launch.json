@@ -17,6 +17,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/pycpptool.py",
             "args": [
+                "parser",
                 "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/dxgi.h",
                 "-i", "dxgicommon.h",
                 "-i", "dxgiformat.h",

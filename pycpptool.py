@@ -1,11 +1,10 @@
 import argparse
 import sys
-import os
 import platform
 import pathlib
 import uuid
 import io
-from typing import Dict, List, Optional, Any, Set, Tuple, TextIO, Iterable, NamedTuple
+from typing import Dict, List, Optional, Set, TextIO, NamedTuple
 from clang import cindex
 
 
@@ -448,19 +447,45 @@ def show(f: TextIO, path: pathlib.Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description='Process cpp header.')
-    parser.add_argument('entrypoint', help='parse target')
-    parser.add_argument(
-        '-d', '--debug', help='debug header',  action='store_true')
-    parser.add_argument(
+
+    sub = parser.add_subparsers()
+
+    # debug
+    sub_debug = sub.add_parser('debug')
+    sub_debug.set_defaults(action='debug')
+    sub_debug.add_argument('entrypoint', help='parse target')
+    sub_debug.add_argument(
         '-i', '--include', action='append')
+
+    # parse
+    sub_parse = sub.add_parser('parser')
+    sub_parse.set_defaults(action='parse')
+    sub_parse.add_argument('entrypoint', help='parse target')
+    sub_parse.add_argument(
+        '-i', '--include', action='append')
+
+    # generator
+    sub_parse = sub.add_parser('gen')
+    sub_parse.set_defaults(action='gen')
+    sub_gen = sub.add_parser('gen')
+    sub_gen.add_argument('entrypoint', help='parse target')
+    sub_gen.add_argument(
+        '-i', '--include', action='append')
+    sub_gen.add_argument(
+        '-g', '--generator', help='code generator',  choices=['dlang'])
+
     args = parser.parse_args()
 
     path = HERE / args.entrypoint
 
-    if args.debug:
+    if args.action == 'debug':
         show(sys.stdout, path)
-    else:
+    elif args.action == 'parse':
         parse(sys.stdout, path, args.include)
+    elif args.action == 'generate':
+        generate(sys.stdout, path, args.include)
+    else:
+        raise Exception()
 
 
 if __name__ == '__main__':
