@@ -4,7 +4,7 @@ import platform
 import pathlib
 import uuid
 import io
-from typing import Dict, List, Optional, Any, Set, Tuple, TextIO, Iterable
+from typing import Dict, List, Optional, Any, Set, Tuple, TextIO, Iterable, NamedTuple
 from jinja2 import Template
 from clang import cindex
 
@@ -64,16 +64,28 @@ def get_token(cursor: cindex.Cursor) -> int:
     return int(tokens[0])
 
 
+def get_int(cursor: cindex.Cursor) -> int:
+    children = [child for child in cursor.get_children()]
+    if len(children) != 1:
+        Exception('not 1')
+    if children[0].kind != cindex.CursorKind.INTEGER_LITERAL:
+        Exception('not int')
+    tokens = [x.spelling for x in children[0].get_tokens()]
+    if len(tokens) != 1:
+        raise Exception('not 1')
+    return int(tokens[0], 16)
+
+
 def get_typeref(cursor: cindex.Cursor) -> Tuple[cindex.Cursor, List[cindex.Cursor]]:
     children = [child for child in cursor.get_children()]
     if children[0].kind != cindex.CursorKind.TYPE_REF:
-        raise Exception("not TYPE_REF")
+        raise Exception(f'not TYPE_REF: {children[0].kind}')
     if len(children) == 1:
         return (children[0], [])
     elif len(children) >= 2:
         return (children[0], [get_token(x) for x in children[1:]])
     else:
-        raise Exception("no children")
+        raise Exception('no children')
 
 
 class ItemBase:
@@ -353,6 +365,7 @@ def _traverse(self,
 
 class Node:
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
+        self.name = c.spelling
         self.path = path
         self.hash = c.hash
         self.type_reference: Optional[int] = None
@@ -447,12 +460,45 @@ class StructField:
 
 class StructNode(Node):
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
+        super().__init__(path, c)
         self.root = StructField(c.spelling, 'struct')
         self.root.parse(c)
-        super().__init__(path, c)
 
     def __str__(self) -> str:
         return f'{self.root}'
+
+
+class EnumValue(NamedTuple):
+    name: str
+    value: int
+
+
+class EnumNode(Node):
+    def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
+        super().__init__(path, c)
+        self.values: List[EnumValue] = []
+        for child in c.get_children():
+            if child.kind == cindex.CursorKind.ENUM_CONSTANT_DECL:
+                self.values.append(EnumValue(child.spelling, get_int(child)))
+            else:
+                raise Exception(child.kind)
+
+    def __str__(self) -> str:
+        with io.StringIO() as f:
+            f.write(f'enum {self.name} {{\n')
+            for value in self.values:
+                f.write(f'    {value.name} = {value.value:#010x}\n')
+            f.write(f'}}')
+            return f.getvalue()
+
+
+def get_node(current: pathlib.Path, c: cindex.Cursor) -> Node:
+    if c.kind == cindex.CursorKind.STRUCT_DECL:
+        return StructNode(current, c)
+    if c.kind == cindex.CursorKind.ENUM_DECL:
+        return EnumNode(current, c)
+    else:
+        return Node(current, c)
 
 
 def parse(ins: TextIO, path: pathlib.Path) -> None:
@@ -504,10 +550,8 @@ def parse(ins: TextIO, path: pathlib.Path) -> None:
         if not value:
             value = extract(c)
 
-        if c.kind == cindex.CursorKind.STRUCT_DECL:
-            node = StructNode(current, c)
-        else:
-            node = Node(current, c)
+        node = get_node(current, c)
+
         if c.hash != c.canonical.hash:
             node.canonical = c.canonical.hash
         if c.referenced and c.hash != c.referenced.hash:
