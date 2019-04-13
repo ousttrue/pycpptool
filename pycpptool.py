@@ -283,24 +283,28 @@ class EnumNode(Node):
             return f.getvalue()
 
 
+def get_typedef_type(c: cindex.Cursor) -> Optional[cindex.Cursor]:
+    children = [child for child in c.get_children()]
+    if not children:
+        return None
+    if len(children) != 1:
+        raise Exception('not 1')
+    typeref = children[0]
+    if typeref.kind not in [
+        cindex.CursorKind.STRUCT_DECL,  # maybe forward decl
+        cindex.CursorKind.ENUM_DECL,
+        cindex.CursorKind.TYPE_REF,
+    ]:
+        raise Exception(f'not TYPE_REF: {typeref.kind}')
+    return typeref
+
+
 class TypedefNode(Node):
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         super().__init__(path, c)
-        self.typedef_type = ''
-        children = [child for child in c.get_children()]
-        if not children:
-            return
-        if len(children) != 1:
-            raise Exception('not 1')
-        typeref = children[0]
-        if typeref.kind not in [
-            cindex.CursorKind.STRUCT_DECL,  # maybe forward decl
-            cindex.CursorKind.ENUM_DECL,
-            cindex.CursorKind.TYPE_REF,
-        ]:
-            raise Exception(f'not TYPE_REF: {typeref.kind}')
-
-        self.typedef_type = typeref.spelling
+        typedef_type = get_typedef_type(c)
+        if typedef_type:
+            self.typedef_type = typedef_type.spelling
 
     def is_valid(self) -> bool:
         if not self.typedef_type:
@@ -331,10 +335,7 @@ def get_node(current: pathlib.Path, c: cindex.Cursor) -> Optional[Node]:
 
 
 def parse(ins: TextIO, path: pathlib.Path) -> None:
-    tu = get_tu(path)
-
     path_map: Dict[str, pathlib.Path] = {}
-
     used: Dict[int, Node] = {}
 
     def traverse(c: cindex.Cursor) -> None:
@@ -386,6 +387,7 @@ def parse(ins: TextIO, path: pathlib.Path) -> None:
             raise Exception(f'unknown kind: {c.kind}')
 
     # parse
+    tu = get_tu(path)
     for c in tu.cursor.get_children():
         traverse(c)
 
@@ -404,21 +406,62 @@ def parse(ins: TextIO, path: pathlib.Path) -> None:
         print(v)
 
 
+def show(f: TextIO, path: pathlib.Path) -> None:
+
+    used: Set[int] = set()
+
+    def traverse(c: cindex.Cursor, indent='') -> None:
+        # skip
+        if c.location.file.name != str(path):
+            # exclude included file
+            return
+        if c.hash in used:
+            # avoid show twice
+            return
+        used.add(c.hash)
+
+        ref = ''
+        if c.referenced and c.referenced.hash != c.hash:
+            ref = f' => {c.referenced.hash:#010x}'
+
+        canonical = ''
+        if c.canonical and c.canonical.hash != c.hash:
+            canonical = f' => {c.canonical.hash:#010x} (forward decl)'
+
+        value = f'{c.hash:#010x}:{indent} {c.kind}: {c.spelling}{ref}{canonical}'
+        print(value)
+
+        if c.kind == cindex.CursorKind.UNEXPOSED_DECL:
+            tokens = [t for t in c.get_tokens()]
+            if tokens and tokens[0].spelling == 'extern':
+                # extern "C" block
+                for child in c.get_children():
+                    traverse(child)
+                return
+
+        for child in c.get_children():
+            traverse(child, indent + '  ')
+
+    tu = get_tu(path)
+    for c in tu.cursor.get_children():
+        traverse(c)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description='Process cpp header.')
     parser.add_argument('entrypoint', help='parse target')
     parser.add_argument(
-        '-p', '--parse', help='parse header',  action='store_true')
+        '-d', '--debug', help='debug header',  action='store_true')
     parser.add_argument(
         '-i', '--include', action='append')
     args = parser.parse_args()
 
     path = HERE / args.entrypoint
 
-    if args.parse:
-        parse(sys.stdout, path)
-    else:
+    if args.debug:
         show(sys.stdout, path)
+    else:
+        parse(sys.stdout, path)
 
 
 if __name__ == '__main__':

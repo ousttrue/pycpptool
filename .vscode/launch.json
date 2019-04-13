@@ -8,7 +8,7 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/pycpptool.py",
-            "args": ["-p", "sample.h"],
+            "args": ["sample.h"],
             "console": "integratedTerminal"
         },
         {
@@ -16,7 +16,7 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/pycpptool.py",
-            "args": ["-p", "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/dxgi.h"],
+            "args": ["C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/dxgi.h"],
             "console": "integratedTerminal"
         },
         {
