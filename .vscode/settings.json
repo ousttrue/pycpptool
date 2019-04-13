@@ -3,6 +3,7 @@
         "cindex",
         "decl",
         "llvm",
+        "midl",
         "pycpptool",
         "struct"
     ]
