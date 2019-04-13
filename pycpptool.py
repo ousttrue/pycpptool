@@ -5,7 +5,6 @@ import pathlib
 import uuid
 import io
 from typing import Dict, List, Optional, Any, Set, Tuple, TextIO, Iterable, NamedTuple
-from jinja2 import Template
 from clang import cindex
 
 
@@ -88,116 +87,8 @@ def get_typeref(cursor: cindex.Cursor) -> Tuple[cindex.Cursor, List[cindex.Curso
         raise Exception('no children')
 
 
-class ItemBase:
-    def __init__(self, name: str) -> None:
-        self.name = name
-
-    def __str__(self) -> str:
-        return f'{self.__class__}: {self.name}'
-
-
-class Item_TypeDef(ItemBase):
-    def __init__(self, name: str, value: Any) -> None:
-        super().__init__(name)
-        self.value = value
-
-    def __str__(self) -> str:
-        return f'typedef {self.name} = {self.value}'
-
-
-class Item_Field(ItemBase):
-    def __init__(self, name: str, field_type: Any) -> None:
-        super().__init__(name)
-        self.type = field_type
-
-    def __str__(self) -> str:
-        return str(self.type)
-
-
-class Item_Struct(ItemBase):
-    def __init__(self, tag: str) -> None:
-        super().__init__(tag)
-        self.fields: List[Item_Field] = []
-        self.struct = 'struct'
-        self.iid: Optional[uuid.UUID] = None
-
-    def __str__(self) -> str:
-        template = Template('''{{ struct }} {{ tag }} {
-{% for f in values -%}
-    {{ f.type }} {{ f.name }};
-{% endfor -%}
-}
-''')
-
-        return template.render(struct=self.struct,
-                               tag=self.name,
-                               values=self.fields)
-
-
-class Item_Union(Item_Struct):
-    def __init__(self, tag: str) -> None:
-        super().__init__(tag)
-        self.struct = 'union'
-
-
-class Item_MacroDefine(ItemBase):
-    def __init__(self, name: str, value: str) -> None:
-        super().__init__(name)
-        self.value = value
-
-    def __str__(self) -> str:
-        return f'#define {self.name} = {self.value}'
-
-
-class Item_ComIID(ItemBase):
-    def __init__(self, iid: uuid.UUID) -> None:
-        super().__init__(str(iid))
-        self.iid = iid
-
-
-class Item_Include(ItemBase):
-    def __init__(self, include: str) -> None:
-        super().__init__('#include')
-        self.include = include
-
-    def __str__(self) -> str:
-        return f'#include {self.include}'
-
-
-class ParsedItem:
-    def __init__(self, key: int, path: str, line: int) -> None:
-        if platform.system() == 'Windows':
-            path = path.lower()
-
-        self.key = key
-        self.path = path
-        self.filename = os.path.basename(self.path)
-        self.line = line
-        self.content: Optional[ItemBase] = None
-
-    def __str__(self) -> str:
-        if self.content:
-            return f'{self.key}: {self.filename}:{self.line}: {self.content}'
-        else:
-            return f'{self.key}: {self.filename}:{self.line}'
-
-
-def add_include_header(self, path: pathlib.Path) -> None:
-    name = path.name
-    if platform.system() == 'Windows':
-        name = name.lower()
-    self.include_headers.add(name)
-
-
-def _is_target(self, file: str) -> bool:
-    name = pathlib.Path(file).name
-    if platform.system() == 'Windows':
-        name = name.lower()
-    return name in self.include_headers
-
-
 def _process_item(self,
-                  cursor) -> Tuple[bool, Optional[ItemBase]]:
+                  cursor):
     tokens = [x.spelling for x in cursor.get_tokens()]
     if cursor.kind == cindex.CursorKind.INCLUSION_DIRECTIVE:
         if '<' in tokens:
@@ -279,86 +170,6 @@ def _process_item(self,
     sys.exit(1)
     return False, None
 
-
-def _process_struct(self,
-                    cursor: cindex.Cursor,
-                    level=0) -> Item_Struct:
-    if cursor.kind == cindex.CursorKind.STRUCT_DECL:
-        struct = Item_Struct(cursor.spelling)
-    elif cursor.kind == cindex.CursorKind.UNION_DECL:
-        struct = Item_Union(cursor.spelling)
-    else:
-        print(cursor.kind)
-        raise Exception()
-
-    # fields
-    for f in cursor.get_children():
-        # tokens = [x for x in f.get_tokens()]
-        field = None
-        if (f.kind == cindex.CursorKind.UNION_DECL
-                or f.kind == cindex.CursorKind.STRUCT_DECL):
-            field = Item_Field(
-                f.spelling, self._process_struct(f, level+1))
-        elif f.kind == cindex.CursorKind.FIELD_DECL:
-            field = Item_Field(f.spelling, f.type.spelling)
-        elif f.kind == cindex.CursorKind.UNEXPOSED_ATTR:
-            attr = extract(f)
-            if attr.startswith('MIDL_INTERFACE("'):
-                struct.iid = uuid.UUID(attr[16:-2])
-                struct.struct = 'interface'
-        elif f.kind == cindex.CursorKind.CXX_BASE_SPECIFIER:
-            # todo
-            continue
-        elif f.kind == cindex.CursorKind.CXX_ACCESS_SPEC_DECL:
-            continue
-        elif f.kind == cindex.CursorKind.CXX_METHOD:
-            # todo
-            continue
-        else:
-            print(f.kind)
-            raise Exception()
-
-        if field:
-            struct.fields.append(field)
-    return struct
-
-
-def _traverse(self,
-              cursor: cindex.Cursor,
-              level: int = 0) -> Optional[ParsedItem]:
-    used = self.item_map.get(cursor.hash)
-    if used:
-        # already processed. skip
-        return used
-
-    if not cursor.location.file:
-        # skip
-        return None
-
-    if not self._is_target(cursor.location.file.name):
-        # skip
-        return None
-
-    # new item
-    item = ParsedItem(
-        cursor.hash, cursor.location.file.name, cursor.location.line)
-    self.item_map[cursor.hash] = item
-    self.parsed_items.append(item)
-
-    # process
-    next_child, content = self._process_item(cursor)
-    if content:
-        item.content = content
-        if isinstance(item.content, (Item_Include, Item_MacroDefine)):
-            pass
-        else:
-            print(f'{"  "*level}{item}')
-
-    if next_child:
-        for child in cursor.get_children():
-            self._traverse(child, level+1)
-
-    return item
 
 ##############################################################################
 
