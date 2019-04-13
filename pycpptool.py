@@ -115,41 +115,6 @@ def _process_item(self,
         # sys.exit(1)
         return False, None
 
-    elif cursor.kind == cindex.CursorKind.TYPEDEF_DECL:
-        if len(tokens) == 3:
-            # ex. typedef float FLOAT
-            return False, Item_TypeDef(tokens[2], tokens[1])
-        elif len(tokens) < 3:
-            raise Exception(str(tokens))
-        else:
-            children = [x for x in cursor.get_children()]
-            count = len(children)
-            if count != 1:
-                raise Exception(str(children))
-            if children[0].kind == cindex.CursorKind.TYPE_REF:
-                return False, Item_TypeDef(
-                    tokens[-1], children[0].referenced.hash)
-            elif children[0].kind in [
-                cindex.CursorKind.STRUCT_DECL,
-                cindex.CursorKind.ENUM_DECL,
-            ]:
-                return False, Item_TypeDef(
-                    tokens[-1], children[0].hash)
-            else:
-                print(children[0].kind)
-                raise Exception(str(children))
-
-    elif cursor.kind == cindex.CursorKind.STRUCT_DECL:
-        return False, self._process_struct(cursor)
-
-    elif cursor.kind == cindex.CursorKind.ENUM_DECL:
-        # todo
-        return False, None
-
-    elif cursor.kind == cindex.CursorKind.FUNCTION_DECL:
-        # todo
-        return False, None
-
     elif cursor.kind == cindex.CursorKind.VAR_DECL:
         if tokens[0] == 'extern':
             return False, None
@@ -179,11 +144,13 @@ class Node:
         self.name = c.spelling
         self.path = path
         self.hash = c.hash
-        self.type_reference: Optional[int] = None
-        self.canonical: Optional[int] = None
         self.is_forward = False
-        self.value = ''
+        self.value = f'{c.kind}: {c.spelling}'
         self.typedef_list: List[Node] = []
+
+        self.canonical: Optional[int] = None
+        if c.hash != c.canonical.hash:
+            self.canonical = c.canonical.hash
 
     def __str__(self) -> str:
         return self.value
@@ -360,7 +327,7 @@ def parse(ins: TextIO, path: pathlib.Path) -> None:
 
     used: Dict[int, Node] = {}
 
-    def traverse(c: cindex.Cursor, level=0) -> None:
+    def traverse(c: cindex.Cursor) -> None:
         if not c.location.file:
             return
 
@@ -390,29 +357,14 @@ def parse(ins: TextIO, path: pathlib.Path) -> None:
             tokens = [t for t in c.get_tokens()]
             if tokens and tokens[0].spelling == 'extern':
                 for child in c.get_children():
-                    traverse(child, level)
+                    traverse(child)
             return
-
-        value = c.spelling
-        if not value:
-            tokens = [t for t in c.get_tokens()]
-            if tokens:
-                value = tokens[0].spelling
-        if not value:
-            value = extract(c)
 
         node = get_node(current, c)
         if not node:
             return
 
-        if c.hash != c.canonical.hash:
-            node.canonical = c.canonical.hash
-        if c.referenced and c.hash != c.referenced.hash:
-            node.type_reference = c.referenced.hash
-
         used[c.hash] = node
-
-        node.value = f'{c.hash:#010x}: {"  "*level}{c.kind}: {value}'
 
         if c.kind not in [
             cindex.CursorKind.STRUCT_DECL,
@@ -423,14 +375,17 @@ def parse(ins: TextIO, path: pathlib.Path) -> None:
         ]:
             raise Exception(f'unknown kind: {c.kind}')
 
+    # parse
     for c in tu.cursor.get_children():
         traverse(c)
 
+    # modify
     for k, v in used.items():
         if v.canonical and v.canonical in used:
             # mark forward declaration
             used[v.canonical].is_forward = True
 
+    # print
     for k, v in used.items():
         if v.path != path:
             continue
