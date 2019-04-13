@@ -1,3 +1,4 @@
+import argparse
 import sys
 import os
 import platform
@@ -287,17 +288,28 @@ class TypedefNode(Node):
         super().__init__(path, c)
         self.typedef_type = ''
         children = [child for child in c.get_children()]
+        if not children:
+            return
         if len(children) != 1:
             raise Exception('not 1')
         typeref = children[0]
-        if typeref.kind in [
+        if typeref.kind not in [
             cindex.CursorKind.STRUCT_DECL,  # maybe forward decl
             cindex.CursorKind.ENUM_DECL,
             cindex.CursorKind.TYPE_REF,
         ]:
-            self.typedef_type = typeref.spelling
-        else:
             raise Exception(f'not TYPE_REF: {typeref.kind}')
+
+        self.typedef_type = typeref.spelling
+
+    def is_valid(self) -> bool:
+        if not self.typedef_type:
+            return False
+        if self.name == self.typedef_type:
+            return False
+        if 'struct ' + self.name == self.typedef_type:
+            return False
+        return True
 
     def __str__(self) -> str:
         return f'{self.name} = {self.typedef_type}'
@@ -312,9 +324,7 @@ def get_node(current: pathlib.Path, c: cindex.Cursor) -> Optional[Node]:
         return FunctionNode(current, c)
     if c.kind == cindex.CursorKind.TYPEDEF_DECL:
         node = TypedefNode(current, c)
-        if node.name == node.typedef_type:
-            return None
-        if 'struct ' + node.name == node.typedef_type:
+        if not node.is_valid():
             return None
         return node
     return Node(current, c)
@@ -395,11 +405,20 @@ def parse(ins: TextIO, path: pathlib.Path) -> None:
 
 
 def main() -> None:
-    path = HERE / sys.argv[1]
-    parse(sys.stdout, path)
+    parser = argparse.ArgumentParser(description='Process cpp header.')
+    parser.add_argument('entrypoint', help='parse target')
+    parser.add_argument(
+        '-p', '--parse', help='parse header',  action='store_true')
+    parser.add_argument(
+        '-i', '--include', action='append')
+    args = parser.parse_args()
 
-    # parser.add_include_header(path)
-    # parser.parse(path)
+    path = HERE / args.entrypoint
+
+    if args.parse:
+        parse(sys.stdout, path)
+    else:
+        show(sys.stdout, path)
 
 
 if __name__ == '__main__':
