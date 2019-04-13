@@ -357,14 +357,20 @@ def show(ins: TextIO, path: pathlib.Path) -> None:
             return
 
         if c.hash in used:
+            # already processed
             return
 
-        if c.kind == cindex.CursorKind.TYPEDEF_DECL:
+        if c.kind in [
+            cindex.CursorKind.TYPEDEF_DECL,
+            cindex.CursorKind.VAR_DECL,
+            cindex.CursorKind.FUNCTION_TEMPLATE,
+            cindex.CursorKind.CLASS_TEMPLATE,
+            cindex.CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION,
+            cindex.CursorKind.CLASS_DECL,
+        ]:
+            # skip
             return
-        if c.kind == cindex.CursorKind.VAR_DECL:
-            return
-        if c.kind == cindex.CursorKind.FUNCTION_TEMPLATE:
-            return
+
         if c.kind == cindex.CursorKind.UNEXPOSED_DECL:
             tokens = [t for t in c.get_tokens()]
             if tokens and tokens[0].spelling == 'extern':
@@ -390,16 +396,13 @@ def show(ins: TextIO, path: pathlib.Path) -> None:
 
         node.value = f'{c.hash:#010x}: {"  "*level}{c.kind}: {value}'
 
-        if c.kind in [
+        if c.kind not in [
             cindex.CursorKind.STRUCT_DECL,
             cindex.CursorKind.UNION_DECL,
             cindex.CursorKind.ENUM_DECL,
             cindex.CursorKind.FUNCTION_DECL,
         ]:
-            pass
-        else:
-            for child in c.get_children():
-                traverse(child, level+1)
+            raise Exception(f'unknown kind: {c.kind}')
 
     for c in tu.cursor.get_children():
         traverse(c)
