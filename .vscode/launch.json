@@ -17,11 +17,13 @@
             "request": "launch",
             "program": "${workspaceFolder}/pycpptool.py",
             "args": [
-                "parser",
+                "gen",
                 "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/dxgi.h",
                 "-i", "dxgicommon.h",
                 "-i", "dxgiformat.h",
                 "-i", "dxgitype.h",
+                "-o", "../windowskits/source",
+                "-g", "dlang"
             ],
             "console": "integratedTerminal"
         },

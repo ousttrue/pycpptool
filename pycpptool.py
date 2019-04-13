@@ -445,6 +445,14 @@ def show(f: TextIO, path: pathlib.Path) -> None:
         traverse(c)
 
 
+class DlangGenerator:
+    def __init__(self):
+        pass
+
+    def generate(self, headers, dst) -> None:
+        pass
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description='Process cpp header.')
 
@@ -453,27 +461,33 @@ def main() -> None:
     # debug
     sub_debug = sub.add_parser('debug')
     sub_debug.set_defaults(action='debug')
-    sub_debug.add_argument('entrypoint', help='parse target')
+    sub_debug.add_argument(
+        'entrypoint', help='parse target')
     sub_debug.add_argument(
         '-i', '--include', action='append')
 
     # parse
     sub_parse = sub.add_parser('parser')
     sub_parse.set_defaults(action='parse')
-    sub_parse.add_argument('entrypoint', help='parse target')
+    sub_parse.add_argument(
+        'entrypoint', help='parse target')
     sub_parse.add_argument(
         '-i', '--include', action='append')
 
     # generator
-    sub_parse = sub.add_parser('gen')
-    sub_parse.set_defaults(action='gen')
     sub_gen = sub.add_parser('gen')
-    sub_gen.add_argument('entrypoint', help='parse target')
+    sub_gen.set_defaults(action='gen')
+    sub_gen.add_argument(
+        'entrypoint', help='parse target')
+    sub_gen.add_argument(
+        '-o', '--outfolder', type=argparse.FileType, required=True)
     sub_gen.add_argument(
         '-i', '--include', action='append')
     sub_gen.add_argument(
-        '-g', '--generator', help='code generator',  choices=['dlang'])
+        '-g', '--generator', help='code generator', choices=['dlang'],
+        required=True)
 
+    # execute
     args = parser.parse_args()
 
     path = HERE / args.entrypoint
@@ -482,8 +496,13 @@ def main() -> None:
         show(sys.stdout, path)
     elif args.action == 'parse':
         parse(sys.stdout, path, args.include)
-    elif args.action == 'generate':
-        generate(sys.stdout, path, args.include)
+    elif args.action == 'gen':
+        headers = parse(sys.stdout, path, args.include)
+
+        if args.generator == 'dlang':
+            gen = DlangGenerator()
+            gen.generate(headers, pathlib.Path(str(args.outfolder)).absolute())
+
     else:
         raise Exception()
 
