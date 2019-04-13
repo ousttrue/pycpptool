@@ -383,25 +383,40 @@ class MethodParam(NamedTuple):
     param_name: str
     param_type: str
 
+    def __str__(self) -> str:
+        return f'{self.param_name}: {self.param_type}'
 
-class Method(Node):
+
+class FunctionNode(Node):
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         super().__init__(path, c)
+        self.ret = ''
+        self.params: List[MethodParam] = []
         for child in c.get_children():
-            raise(child.kind)
+            if child.kind == cindex.CursorKind.TYPE_REF:
+                if self.ret:
+                    raise Exception('dup ret')
+                self.ret = child.spelling
+            elif child.kind == cindex.CursorKind.PARM_DECL:
+                param = MethodParam(child.spelling, child.type.spelling)
+                self.params.append(param)
+            else:
+                raise(Exception(child.kind))
 
     def __str__(self) -> str:
-        return f'{self.name}();'
+        return f'{self.name}({", ".join(str(p) for p in self.params)})->{self.ret};'
 
 
 class StructNode(Node):
-    def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
+    def __init__(self, path: pathlib.Path, c: cindex.Cursor, is_root=True) -> None:
         super().__init__(path, c)
         self.field_type = 'struct'
         self.fields: List['StructNode'] = []
         self.iid: Optional[uuid.UUID] = None
         self.base = ''
-        self.methods: List[Method] = []
+        self.methods: List[FunctionNode] = []
+        if is_root:
+            self._parse(c)
 
     def __str__(self) -> str:
         with io.StringIO() as f:
@@ -431,25 +446,23 @@ class StructNode(Node):
             f.write(f'{indent}}}')
 
         else:
-            f.write(f'{indent}{self.field_type} {self.field_name};')
+            f.write(f'{indent}{self.field_type} {self.name};')
 
     def _parse(self, c: cindex.Cursor) -> None:
         for child in c.get_children():
             if child.kind == cindex.CursorKind.FIELD_DECL:
                 typeref, literal = get_typeref(child)
-                field = StructNode(self.path, child)
+                field = StructNode(self.path, child, False)
                 field.field_type = (typeref.spelling +
                                     ''.join(f'[{n}]' for n in literal))
                 self.fields.append(field)
             elif child.kind == cindex.CursorKind.STRUCT_DECL:
                 struct = StructNode(self.path, child)
                 struct.field_type = 'struct'
-                struct._parse(child)
                 self.fields.append(struct)
             elif child.kind == cindex.CursorKind.UNION_DECL:
                 union = StructNode(self.path, child)
                 union.field_type = 'union'
-                union._parse(child)
                 self.fields.append(union)
             elif child.kind == cindex.CursorKind.UNEXPOSED_ATTR:
                 value = extract(child)
@@ -461,7 +474,7 @@ class StructNode(Node):
                     raise Exception()
                 self.base = typeref.referenced.spelling
             elif child.kind == cindex.CursorKind.CXX_METHOD:
-                self.methods.append(Method(self.path, child))
+                self.methods.append(FunctionNode(self.path, child))
             elif child.kind == cindex.CursorKind.CXX_ACCESS_SPEC_DECL:
                 pass
             else:
@@ -497,8 +510,9 @@ def get_node(current: pathlib.Path, c: cindex.Cursor) -> Node:
         return StructNode(current, c)
     if c.kind == cindex.CursorKind.ENUM_DECL:
         return EnumNode(current, c)
-    else:
-        return Node(current, c)
+    if c.kind == cindex.CursorKind.FUNCTION_DECL:
+        return FunctionNode(current, c)
+    return Node(current, c)
 
 
 def parse(ins: TextIO, path: pathlib.Path) -> None:
@@ -574,6 +588,7 @@ def parse(ins: TextIO, path: pathlib.Path) -> None:
 
     for k, v in used.items():
         if v.canonical and v.canonical in used:
+            # mark forward declaration
             used[v.canonical].is_forward = True
 
     for k, v in used.items():
