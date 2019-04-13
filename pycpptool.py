@@ -180,7 +180,6 @@ class Node:
         self.path = path
         self.hash = c.hash
         self.type_reference: Optional[int] = None
-        self.is_typedef = False
         self.canonical: Optional[int] = None
         self.is_forward = False
         self.value = ''
@@ -406,8 +405,6 @@ def parse(ins: TextIO, path: pathlib.Path) -> None:
         if v.path != path:
             continue
         if v.is_forward:
-            continue
-        if v.is_typedef:
             continue
         print(v)
 
