@@ -2,6 +2,7 @@ import argparse
 import shutil
 import datetime
 import sys
+import re
 import platform
 import pathlib
 import uuid
@@ -485,13 +486,52 @@ import core.sys.windows.com;
 HEAD = '''
 extern(Windows){
 
-    alias IID = GUID;
+alias IID = GUID;
+
 '''
 
 
 TAIL = '''
 }
 '''
+
+def dlang_enum(d: TextIO, node: EnumNode) -> None:
+    d.write(f'enum {node.name} {{\n')
+    for v in node.values:
+        d.write(f'    {v.name} = {v.value:#010x},\n')
+    d.write(f'}}\n')
+
+def dlang_alias(d: TextIO, node: TypedefNode) -> None:
+    d.write(f'alias {node.name} = {node.typedef_type};\n')
+
+def repl(m):
+    return m[0][1:]
+def to_d(param_type: str)->str:
+    param_type = (param_type
+            .replace('&', '*')
+            .replace('*const *', '**'))
+    if param_type[0] == 'I': # is_instance
+        param_type = re.sub(r'\*+', repl, param_type) # reduce *
+    return param_type
+
+def dlang_function(d: TextIO, m: FunctionNode, indent = '') -> None:
+    ret = m.ret if m.ret else 'void'
+    params = ', '.join(f'{to_d(p.param_type)} {p.param_name}' for p in m.params)
+    d.write(f'{indent}{ret} {m.name}({params});\n');
+
+def dlang_struct(d: TextIO, node: StructNode) -> None:
+    if node.iid:
+        # com interface
+        h = node.iid.hex
+        iid = f'0x{h[0:8]}, 0x{h[8:12]}, 0x{h[12:16]}, [0x{h[16:18]}, 0x{h[18:20]}, 0x{h[20:22]}, 0x{h[22:24]}, 0x{h[24:26]}, 0x{h[26:28]}, 0x{h[28:30]}, 0x{h[30:32]}]'
+        d.write(f'interface {node.name}: {node.base} {{\n')
+        d.write(f'    static immutable iidof = GUID({iid});\n')
+        for m in node.methods:
+            dlang_function(d, m, '    ')
+        d.write(f'}}\n')
+    else:
+        d.write(f'{node}\n')
+
 
 class DlangGenerator:
     def __init__(self) -> None:
@@ -508,12 +548,12 @@ class DlangGenerator:
             shutil.rmtree(root)
         root.mkdir(parents=True, exist_ok=True)
 
-        self.generate_header(header, root, package_name)
+        self._generate_header(header, root, package_name)
 
-    def generate_header(self, header: Header, 
+    def _generate_header(self, header: Header, 
             root: pathlib.Path, package_name: str):
 
-        module_name = header.name
+        module_name = header.name[:-2]
         dst = root / f'{module_name}.d'
         print(dst)
 
@@ -523,7 +563,7 @@ class DlangGenerator:
 
             d.write(IMPORT)
             for include in header.includes:
-                d.write(f'public import windowskits.{package_name}.{include.name};\n')
+                d.write(f'public import windowskits.{package_name}.{include.name[:-2]};\n')
             d.write(HEAD)
 
             for node in header.nodes:
@@ -532,30 +572,34 @@ class DlangGenerator:
                 snippet = snippet_map.get(module_name)
                 if snippet:
                     d.write(snippet)
+                '''
 
-                # alias
-                typedef(d, v.typedef_list)
+                if isinstance(node, EnumNode):
+                    dlang_enum(d, node)
+                    d.write('\n')
+                elif isinstance(node, TypedefNode):
+                    dlang_alias(d, node)
+                    d.write('\n')
+                elif isinstance(node, StructNode):
+                    if not node.is_forward:
+                        dlang_struct(d, node)
+                        d.write('\n')
+                elif isinstance(node, FunctionNode):
+                    dlang_function(d, node)
+                    d.write('\n')
+                else:
+                    raise Exception(node.name)
 
+                '''
                 # constant
                 const(d, v.const_list)
-
-                # enum
-                enum(d, v.enum_list)
-
-                # struct
-                struct(d, v.struct_list)
-
-                # interface
-                interface(d, v.interface_list, v.iid_map)
-
-                # function
-                function(d, v.function_list)
                 '''
             d.write(TAIL)
 
 
         for include in header.includes:
-            self.generate_header(include, root, package_name)
+            self._generate_header(include, root, package_name)
+
 # }}}
 
 def show(f: TextIO, path: pathlib.Path) -> None:

@@ -1,0 +1,16 @@
+"let s:cmdline = 'python pycpptool.py parse sample.h'
+let s:cmdline = 'python pycpptool.py gen "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/dxgi.h" -i dxgicommon.h -i dxgiformat.h -i dxgitype.h -o ../windowskits/source -g dlang'
+"let s:cmdline = 'python pycpptool.py parse "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/dxgi.h" -i dxgicommon.h -i dxgiformat.h -i dxgitype.h'
+
+let g:quickrun_config['project'] = {
+\ 'outputter' : 'error',
+\ 'outputter/error/success' : 'buffer',
+\ 'outputter/error/error'   : 'quickfix',
+\ 'outputter/buffer/split' : ':botright 8sp',
+\ 'hook/output_encode/encoding' : 'cp932',
+\ 'exec' : [ s:cmdline ],
+\}
+
+function! TestPyErrFmt()
+    call TestErrFmt('%A  File "%f"\, line %l%.%#,%Z%[%^ ]%\@=%m', ['Traceback (most recent call last):','pycpptool.py|548|', '     main()','pycpptool.py|537|', '    header = parse(path, args.include)', 'pycpptool.py|431', '     traverse(c)', 'pycpptool.py|416|', '     used.add[c.hash] = node', 'AttributeError: ''dict'' object has no attribute ''add'''])
+endfunction
