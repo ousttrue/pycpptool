@@ -13,26 +13,35 @@ HERE = pathlib.Path(__file__).absolute().parent
 DEFAULT_CLANG_DLL = pathlib.Path(
     "C:/Program Files (x86)/LLVM/bin/libclang.dll")
 
+SET_DLL = False
 
 def get_tu(path: pathlib.Path,
+           use_macro: bool = False,
            dll: Optional[pathlib.Path] = None) -> cindex.TranslationUnit:
     '''
     parse cpp source
     '''
+    global SET_DLL
+
     if not path.exists():
         raise FileNotFoundError(str(path))
 
     if not dll and DEFAULT_CLANG_DLL.exists():
         dll = DEFAULT_CLANG_DLL
-    if dll:
+    if not SET_DLL and dll:
         cindex.Config.set_library_file(str(dll))
+        SET_DLL=True
 
     index = cindex.Index.create()
+
+    kw = {
+    }
+    if use_macro:
+        kw['options'] = cindex.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
+
     return index.parse(
         str(path),
-        ['-x', 'c++']
-        # , options=cindex.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
-    )
+        ['-x', 'c++'], **kw)
 
 
 extract_bytes_cache: Dict[pathlib.Path, bytes] = {}
@@ -75,17 +84,14 @@ def get_int(cursor: cindex.Cursor) -> int:
     return int(tokens[0], 16)
 
 
+##############################################################################
+# unused
+##############################################################################
+
 def _process_item(self,
                   cursor):
     tokens = [x.spelling for x in cursor.get_tokens()]
-    if cursor.kind == cindex.CursorKind.INCLUSION_DIRECTIVE:
-        if '<' in tokens:
-            open = tokens.index('<')
-            return False, Item_Include(''.join(tokens[open+1:-1]))
-        else:
-            return False, Item_Include(tokens[-1][1:-1])
-
-    elif cursor.kind == cindex.CursorKind.MACRO_DEFINITION:
+    if cursor.kind == cindex.CursorKind.MACRO_DEFINITION:
         if len(tokens) == 1:
             # ex. #define __header__
             return False, None
@@ -109,19 +115,6 @@ def _process_item(self,
         print(cursor.kind, tokens)
         sys.exit(1)
         return False, None
-
-    elif cursor.kind == cindex.CursorKind.UNEXPOSED_DECL:
-        if not tokens:
-            return False, None
-        if tokens[0] == 'extern':
-            return True, None
-        print(cursor.kind, tokens)
-        sys.exit(1)
-        return False, None
-
-    print(cursor.kind, tokens)
-    sys.exit(1)
-    return False, None
 
 
 ##############################################################################
@@ -275,6 +268,8 @@ def get_typedef_type(c: cindex.Cursor) -> cindex.Cursor:
     if c.type.kind != cindex.TypeKind.TYPEDEF:
         raise Exception('not TYPEDEF')
     children = [child for child in c.get_children()]
+    if not children:
+        return None
     if len(children) != 1:
         raise Exception('not 1')
     typeref = children[0]
@@ -291,7 +286,14 @@ def get_typedef_type(c: cindex.Cursor) -> cindex.Cursor:
 class TypedefNode(Node):
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         super().__init__(path, c)
-        self.typedef_type = get_typedef_type(c).spelling
+        typedef_type = get_typedef_type(c)
+        if typedef_type:
+            self.typedef_type = typedef_type.spelling
+        else:
+            tokens = [t.spelling for t in c.get_tokens()]
+            if len(tokens) != 3:
+                raise Exception()
+            self.typedef_type = tokens[1]
 
     def is_valid(self) -> bool:
         if not self.typedef_type:
@@ -304,6 +306,37 @@ class TypedefNode(Node):
 
     def __str__(self) -> str:
         return f'{self.name} = {self.typedef_type}'
+
+
+def normalize(src: str) -> str:
+    if platform.system() == 'Windows':
+        return src.lower()
+    return src
+
+
+class Header(Node):
+    def __init__(self, path: pathlib.Path) -> None:
+        self.path = path
+        self.includes: List[Header] = []
+        self.nodes: List[Node] = []
+        self.name = normalize(self.path.name)
+
+    def print_nodes(self, used: Set[pathlib.Path] = None) -> None:
+        if not used:
+            used = set()
+        if self.path in used:
+            return
+        used.add(self.path)
+
+        for include in self.includes:
+            include.print_nodes(used)
+
+        print(f'#### {self.path} ####')
+        for node in self.nodes:
+            if node.is_forward:
+                continue
+            print(f'{node}')
+        print()
 
 
 def get_node(current: pathlib.Path, c: cindex.Cursor) -> Optional[Node]:
@@ -321,31 +354,38 @@ def get_node(current: pathlib.Path, c: cindex.Cursor) -> Optional[Node]:
     return Node(current, c)
 
 
-def normalize(src: str) -> str:
-    if platform.system() == 'Windows':
-        return src.lower()
-    return src
+def parse(root_path: pathlib.Path, include: List[str]) -> Dict[str, Header]:
 
+    path_map: Dict[str, Header] = {}
 
-def parse(ins: TextIO, path: pathlib.Path, include: List[str]) -> None:
+    def get_or_create_header(path: str) -> Header:
+        header = path_map.get(path)
+        if not header:
+            header = Header(pathlib.Path(path))
+            path_map[path] = header
+            if header.path == root_path:
+                root_header = header
+        return header
 
-    include = [normalize(x) for x in include]
-
-    path_map: Dict[str, pathlib.Path] = {}
     used: Dict[int, Node] = {}
+
+    kinds = [
+            cindex.CursorKind.UNEXPOSED_DECL,
+            cindex.CursorKind.STRUCT_DECL,
+            cindex.CursorKind.UNION_DECL,
+            cindex.CursorKind.ENUM_DECL,
+            cindex.CursorKind.FUNCTION_DECL,
+            cindex.CursorKind.TYPEDEF_DECL,
+    ]
 
     def traverse(c: cindex.Cursor) -> None:
         if not c.location.file:
             return
 
-        current = path_map.get(c.location.file.name)
-        if not current:
-            current = pathlib.Path(c.location.file.name)
-            path_map[c.location.file.name] = current
-            # print(path)
-        if current == path:
+        current = get_or_create_header(c.location.file.name)
+        if current.path == root_path:
             pass
-        elif normalize(current.name) in include:
+        elif current.name in include:
             pass
         else:
             return
@@ -354,13 +394,7 @@ def parse(ins: TextIO, path: pathlib.Path, include: List[str]) -> None:
             # already processed
             return
 
-        if c.kind in [
-            cindex.CursorKind.VAR_DECL,
-            cindex.CursorKind.FUNCTION_TEMPLATE,
-            cindex.CursorKind.CLASS_TEMPLATE,
-            cindex.CursorKind.CLASS_TEMPLATE_PARTIAL_SPECIALIZATION,
-            cindex.CursorKind.CLASS_DECL,
-        ]:
+        if c.kind not in kinds:
             # skip
             return
 
@@ -376,18 +410,10 @@ def parse(ins: TextIO, path: pathlib.Path, include: List[str]) -> None:
             return
 
         used[c.hash] = node
-
-        if c.kind not in [
-            cindex.CursorKind.STRUCT_DECL,
-            cindex.CursorKind.UNION_DECL,
-            cindex.CursorKind.ENUM_DECL,
-            cindex.CursorKind.FUNCTION_DECL,
-            cindex.CursorKind.TYPEDEF_DECL,
-        ]:
-            raise Exception(f'unknown kind: {c.kind}')
+        current.nodes.append(node)
 
     # parse
-    tu = get_tu(path)
+    tu = get_tu(root_path)
     for c in tu.cursor.get_children():
         traverse(c)
 
@@ -397,11 +423,58 @@ def parse(ins: TextIO, path: pathlib.Path, include: List[str]) -> None:
             # mark forward declaration
             used[v.canonical].is_forward = True
 
-    # print
-    for k, v in used.items():
-        if v.is_forward:
-            continue
-        print(f'{v.path.name}:{v}')
+    return path_map
+
+
+def parse_macro(path_map: Dict[str, Header], root_path: pathlib.Path, include: List[str]) -> None:
+
+    name_map = {normalize(pathlib.Path(k).name): v for k, v in path_map.items()}
+
+    name_map = {k: v for k, v in name_map.items() if k in include}
+
+    kinds = [
+            cindex.CursorKind.UNEXPOSED_DECL,
+            cindex.CursorKind.INCLUSION_DIRECTIVE,
+    ]
+
+    def traverse(c: cindex.Cursor) -> None:
+        if not c.location.file:
+            return
+
+        current = path_map.get(c.location.file.name)
+        if not current:
+            return
+
+        if c.kind not in kinds:
+            # skip
+            return
+
+        if c.kind == cindex.CursorKind.UNEXPOSED_DECL:
+            tokens = [t for t in c.get_tokens()]
+            if tokens and tokens[0].spelling == 'extern':
+                for child in c.get_children():
+                    traverse(child)
+            return
+
+        if c.kind == cindex.CursorKind.INCLUSION_DIRECTIVE:
+            tokens = [t.spelling for t in c.get_tokens()]
+            if '<' in tokens:
+                carret = tokens.index('<')
+                header_name = ''.join(tokens[carret+1:-1])
+            else:
+                header_name = tokens[-1][1:-1]
+
+            header_name = normalize(header_name)
+
+            included_header = name_map.get(header_name)
+            if included_header:
+                current.includes.append(included_header)
+
+    # parse
+    tu = get_tu(root_path, True)
+    for c in tu.cursor.get_children():
+        traverse(c)
+
 
 
 def show(f: TextIO, path: pathlib.Path) -> None:
@@ -467,7 +540,7 @@ def main() -> None:
         '-i', '--include', action='append')
 
     # parse
-    sub_parse = sub.add_parser('parser')
+    sub_parse = sub.add_parser('parse')
     sub_parse.set_defaults(action='parse')
     sub_parse.add_argument(
         'entrypoint', help='parse target')
@@ -492,16 +565,25 @@ def main() -> None:
 
     path = HERE / args.entrypoint
 
+    include = args.include
+    if include:
+        include = [normalize(x) for x in include]
+    else:
+        include = []
+
     if args.action == 'debug':
         show(sys.stdout, path)
     elif args.action == 'parse':
-        parse(sys.stdout, path, args.include)
+        headers = parse(path, include)
+        parse_macro(headers, path, include)
+        # print
+        headers[str(path)].print_nodes()
     elif args.action == 'gen':
-        headers = parse(sys.stdout, path, args.include)
+        header = parse(path, include)
 
         if args.generator == 'dlang':
             gen = DlangGenerator()
-            gen.generate(headers, pathlib.Path(str(args.outfolder)).absolute())
+            gen.generate(header, pathlib.Path(str(args.outfolder)).absolute())
 
     else:
         raise Exception()

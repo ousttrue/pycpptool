@@ -8,7 +8,10 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/pycpptool.py",
-            "args": ["sample.h"],
+            "args": [
+                "parse",
+                "sample.h",
+            ],
             "console": "integratedTerminal"
         },
         {
