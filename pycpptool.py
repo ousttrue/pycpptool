@@ -498,7 +498,14 @@ TAIL = '''
 def dlang_enum(d: TextIO, node: EnumNode) -> None:
     d.write(f'enum {node.name} {{\n')
     for v in node.values:
-        d.write(f'    {v.name} = {v.value:#010x},\n')
+        if v.name.startswith(node.name):
+            # invalid: DXGI_FORMAT_420_OPAQUE
+            if v.name[len(node.name)+1].isnumeric():
+                d.write(f'    {v.name} = {v.value:#010x},\n')
+            else:
+                d.write(f'    {v.name[len(node.name)+1:]} = {v.value:#010x},\n')
+        else:
+            d.write(f'    {v.name} = {v.value:#010x},\n')
     d.write(f'}}\n')
 
 def dlang_alias(d: TextIO, node: TypedefNode) -> None:
