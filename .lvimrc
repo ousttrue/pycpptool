@@ -1,7 +1,8 @@
 "let s:cmdline = 'python pycpptool.py parse sample.h'
 "let s:cmdline = 'python pycpptool.py gen "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/dxgi.h" -i dxgicommon.h -i dxgiformat.h -i dxgitype.h -o ../windowskits/source -g dlang'
 "let s:cmdline = 'python pycpptool.py parse "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/dxgi.h" -i dxgicommon.h -i dxgiformat.h -i dxgitype.h'
-let s:cmdline = 'python pycpptool.py gen "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/um/d3d11.h" -i dxgicommon.h -i dxgiformat.h -i dxgitype.h -i dxgi.h -i d3dcommon.h -i d3d10.h -o ../windowskits/source -g dlang'
+"let s:cmdline = 'python pycpptool.py gen "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/um/d3d11.h" -i dxgicommon.h -i dxgiformat.h -i dxgitype.h -i dxgi.h -i d3dcommon.h -i d3d10.h -o ../windowskits/source -g dlang'
+let s:cmdline = 'python pycpptool.py gen "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/um/d2d1.h" -i dxgicommon.h -i dxgiformat.h -i dxgitype.h -i dxgi.h -i dcommon.h -i d2dbasetypes.h -o ../windowskits/source -g dlang'
 
 let g:quickrun_config['project'] = {
 \ 'outputter' : 'error',

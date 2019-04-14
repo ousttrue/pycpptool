@@ -1,3 +1,4 @@
+import time
 import argparse
 import shutil
 import datetime
@@ -108,6 +109,7 @@ class FunctionNode(Node):
         super().__init__(path, c)
         self.ret = ''
         self.params: List[MethodParam] = []
+        self.has_body = False
         for child in c.get_children():
             if child.kind == cindex.CursorKind.TYPE_REF:
                 if self.ret:
@@ -118,12 +120,12 @@ class FunctionNode(Node):
                 self.params.append(param)
             elif child.kind == cindex.CursorKind.COMPOUND_STMT:
                 # function body
-                raise(Exception(child.kind))
+                self.has_body = True
             elif child.kind == cindex.CursorKind.UNEXPOSED_ATTR:
                 #tokens = [t.spelling for t in child.get_tokens()]
                 #print(tokens)
                 #raise(Exception(child.kind))
-                continue
+                pass
             else:
                 raise(Exception(child.kind))
 
@@ -143,6 +145,53 @@ class StructNode(Node):
         self.methods: List[FunctionNode] = []
         if is_root:
             self._parse(c)
+
+    def _parse(self, c: cindex.Cursor) -> None:
+        for child in c.get_children():
+            if child.kind == cindex.CursorKind.FIELD_DECL:
+                field = StructNode(self.path, child, False)
+                if child.type == cindex.TypeKind.TYPEDEF:
+                    field.field_type = get_typedef_type(child).spelling
+                else:
+                    field.field_type = child.type.spelling
+                self.fields.append(field)
+            elif child.kind == cindex.CursorKind.STRUCT_DECL:
+                struct = StructNode(self.path, child)
+                struct.field_type = 'struct'
+                self.fields.append(struct)
+            elif child.kind == cindex.CursorKind.UNION_DECL:
+                union = StructNode(self.path, child)
+                union.field_type = 'union'
+                self.fields.append(union)
+            elif child.kind == cindex.CursorKind.UNEXPOSED_ATTR:
+                value = extract(child)
+                d3d11_key = 'MIDL_INTERFACE("'
+                d2d1_key = 'DX_DECLARE_INTERFACE("'
+                if value.startswith(d3d11_key):
+                    self.iid = uuid.UUID(value[len(d3d11_key):-2])
+                elif value.startswith(d2d1_key):
+                    self.iid = uuid.UUID(value[len(d2d1_key):-2])
+                else:
+                    print(value)
+            elif child.kind == cindex.CursorKind.CXX_BASE_SPECIFIER:
+                if child.type == cindex.TypeKind.TYPEDEF:
+                    self.base = get_typedef_type(child).spelling
+                else:
+                    self.base = child.type.spelling
+            elif child.kind == cindex.CursorKind.CXX_METHOD:
+                method = FunctionNode(self.path, child)
+                if not method.has_body:
+                    self.methods.append(method)
+            elif child.kind == cindex.CursorKind.CONSTRUCTOR:
+                pass
+            elif child.kind == cindex.CursorKind.DESTRUCTOR:
+                pass
+            elif child.kind == cindex.CursorKind.CONVERSION_FUNCTION:
+                pass
+            elif child.kind == cindex.CursorKind.CXX_ACCESS_SPEC_DECL:
+                pass
+            else:
+                raise Exception(child.kind)
 
     def __str__(self) -> str:
         with io.StringIO() as f:
@@ -176,45 +225,6 @@ class StructNode(Node):
             if field_type.startswith('struct '):
                 field_type = field_type[7:]
             f.write(f'{indent}{field_type} {self.name};')
-
-    def _parse(self, c: cindex.Cursor) -> None:
-        for child in c.get_children():
-            if child.kind == cindex.CursorKind.FIELD_DECL:
-                field = StructNode(self.path, child, False)
-                if child.type == cindex.TypeKind.TYPEDEF:
-                    field.field_type = get_typedef_type(child).spelling
-                else:
-                    field.field_type = child.type.spelling
-                self.fields.append(field)
-            elif child.kind == cindex.CursorKind.STRUCT_DECL:
-                struct = StructNode(self.path, child)
-                struct.field_type = 'struct'
-                self.fields.append(struct)
-            elif child.kind == cindex.CursorKind.UNION_DECL:
-                union = StructNode(self.path, child)
-                union.field_type = 'union'
-                self.fields.append(union)
-            elif child.kind == cindex.CursorKind.UNEXPOSED_ATTR:
-                value = extract(child)
-                if value.startswith('MIDL_INTERFACE("'):
-                    self.iid = uuid.UUID(value[16:-2])
-            elif child.kind == cindex.CursorKind.CXX_BASE_SPECIFIER:
-                if child.type == cindex.TypeKind.TYPEDEF:
-                    self.base = get_typedef_type(child).spelling
-                else:
-                    self.base = child.type.spelling
-            elif child.kind == cindex.CursorKind.CXX_METHOD:
-                self.methods.append(FunctionNode(self.path, child))
-            elif child.kind == cindex.CursorKind.CONSTRUCTOR:
-                pass
-            elif child.kind == cindex.CursorKind.DESTRUCTOR:
-                pass
-            elif child.kind == cindex.CursorKind.CONVERSION_FUNCTION:
-                pass
-            elif child.kind == cindex.CursorKind.CXX_ACCESS_SPEC_DECL:
-                pass
-            else:
-                raise Exception(child.kind)
 
 
 class EnumValue(NamedTuple):
@@ -331,7 +341,8 @@ class Header(Node):
 def get_node(current: pathlib.Path, c: cindex.Cursor) -> Optional[Node]:
     if (c.kind == cindex.CursorKind.STRUCT_DECL
             or c.kind == cindex.CursorKind.UNION_DECL):
-        return StructNode(current, c)
+        struct = StructNode(current, c)
+        return struct
     if c.kind == cindex.CursorKind.ENUM_DECL:
         return EnumNode(current, c)
     if c.kind == cindex.CursorKind.FUNCTION_DECL:
@@ -430,6 +441,7 @@ def parse_macro(path_map: Dict[pathlib.Path, Header], root_path: pathlib.Path, i
             cindex.CursorKind.UNEXPOSED_DECL,
             cindex.CursorKind.INCLUSION_DIRECTIVE,
             cindex.CursorKind.MACRO_DEFINITION,
+            cindex.CursorKind.MACRO_INSTANTIATION,
     ]
 
     def traverse(c: cindex.Cursor) -> None:
@@ -472,12 +484,16 @@ def parse_macro(path_map: Dict[pathlib.Path, Header], root_path: pathlib.Path, i
                 # ex. #define __header__
                 return
 
-            if tokens == ['IID_ID3DBlob', 'IID_ID3D10Blob']:
+            if tokens in [
+                    ['IID_ID3DBlob', 'IID_ID3D10Blob'],
+                    ['INTERFACE', 'ID3DInclude'],
+                    ['D2D1_INVALID_TAG', 'ULONGLONG_MAX'],
+                    ['D2D1FORCEINLINE', 'FORCEINLINE'],
+                    ]:
                 #define IID_ID3DBlob IID_ID3D10Blob
-                return
-
-            if tokens == ['INTERFACE', 'ID3DInclude']:
                 #define INTERFACE ID3DInclude
+                #define D2D1_INVALID_TAG ULONGLONG_MAX
+                #define D2D1FORCEINLINE FORCEINLINE
                 return
 
             if len(tokens)>=3 and tokens[1]=='(' and tokens[2][0].isalpha():
@@ -489,6 +505,8 @@ def parse_macro(path_map: Dict[pathlib.Path, Header], root_path: pathlib.Path, i
                         c.spelling, 
                         ' '.join(x for x in tokens[1:])))
 
+        if c.kind == cindex.CursorKind.MACRO_INSTANTIATION:
+            pass
 
     # parse
     tu = get_tu(root_path, True)
@@ -516,6 +534,18 @@ alias IID = GUID;
 TAIL = '''
 }
 '''
+
+D3D11_SNIPPET = '''
+'''
+
+D2D1_SNIPPET = '''
+enum D2DERR_RECREATE_TARGET = 0x8899000CL;
+'''
+
+snippet_map = {
+    'd3d11': D3D11_SNIPPET,
+    'd2d1': D2D1_SNIPPET,
+}
 
 def dlang_enum(d: TextIO, node: EnumNode) -> None:
     d.write(f'enum {node.name} {{\n')
@@ -600,6 +630,7 @@ class DlangGenerator:
 
         if root.exists():
             shutil.rmtree(root)
+            time.sleep(0.1)
         root.mkdir(parents=True, exist_ok=True)
 
         self._generate_header(header, root, package_name)
@@ -624,6 +655,10 @@ class DlangGenerator:
             for include in header.includes:
                 d.write(f'public import windowskits.{package_name}.{include.name[:-2]};\n')
             d.write(HEAD)
+
+            snippet = snippet_map.get(module_name)
+            if snippet:
+                d.write(snippet)
 
             for m in header.macro_defnitions:
                 d.write(f'enum {m.name} = {m.value};\n')
