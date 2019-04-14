@@ -1,4 +1,6 @@
 import argparse
+import shutil
+import datetime
 import sys
 import platform
 import pathlib
@@ -8,13 +10,14 @@ from typing import Dict, List, Optional, Set, TextIO, NamedTuple
 from clang import cindex
 
 
-HERE = pathlib.Path(__file__).absolute().parent
+HERE = pathlib.Path(__file__).resolve().parent
 
 DEFAULT_CLANG_DLL = pathlib.Path(
     "C:/Program Files (x86)/LLVM/bin/libclang.dll")
 
 SET_DLL = False
 
+# helper {{{
 def get_tu(path: pathlib.Path,
            use_macro: bool = False,
            dll: Optional[pathlib.Path] = None) -> cindex.TranslationUnit:
@@ -82,11 +85,9 @@ def get_int(cursor: cindex.Cursor) -> int:
     if len(tokens) != 1:
         raise Exception('not 1')
     return int(tokens[0], 16)
+# }}}
 
-
-##############################################################################
-# unused
-##############################################################################
+# unused {{{
 
 def _process_item(self,
                   cursor):
@@ -116,10 +117,9 @@ def _process_item(self,
         sys.exit(1)
         return False, None
 
+# }}}
 
-##############################################################################
-
-
+# Node {{{
 class Node:
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         self.name = c.spelling
@@ -201,7 +201,7 @@ class StructNode(Node):
             for method in self.methods:
                 f.write(f'{child_indent}{method}\n')
 
-            f.write(f'{indent}}}')
+            f.write(indent + '}')
 
         else:
             f.write(f'{indent}{self.field_type} {self.name};')
@@ -307,7 +307,6 @@ class TypedefNode(Node):
     def __str__(self) -> str:
         return f'{self.name} = {self.typedef_type}'
 
-
 def normalize(src: str) -> str:
     if platform.system() == 'Windows':
         return src.lower()
@@ -337,7 +336,6 @@ class Header(Node):
                 continue
             print(f'{node}')
         print()
-
 
 def get_node(current: pathlib.Path, c: cindex.Cursor) -> Optional[Node]:
     if c.kind == cindex.CursorKind.STRUCT_DECL:
@@ -425,7 +423,6 @@ def parse(root_path: pathlib.Path, include: List[str]) -> Dict[str, Header]:
 
     return path_map
 
-
 def parse_macro(path_map: Dict[str, Header], root_path: pathlib.Path, include: List[str]) -> None:
 
     name_map = {normalize(pathlib.Path(k).name): v for k, v in path_map.items()}
@@ -477,6 +474,90 @@ def parse_macro(path_map: Dict[str, Header], root_path: pathlib.Path, include: L
 
 
 
+# }}}
+
+# dlang {{{
+IMPORT = '''
+import core.sys.windows.windef;
+import core.sys.windows.com;
+'''
+
+HEAD = '''
+extern(Windows){
+
+    alias IID = GUID;
+'''
+
+
+TAIL = '''
+}
+'''
+
+class DlangGenerator:
+    def __init__(self) -> None:
+        pass
+
+    def generate(self, header: Header,
+            dlang_root: pathlib.Path,
+            kit_name: str
+            ) -> None:
+        package_name = f'build_{kit_name.replace(".", "_")}'
+        root = dlang_root / 'windowskits' / package_name
+
+        if root.exists():
+            shutil.rmtree(root)
+        root.mkdir(parents=True, exist_ok=True)
+
+        self.generate_header(header, root, package_name)
+
+    def generate_header(self, header: Header, 
+            root: pathlib.Path, package_name: str):
+
+        module_name = header.name
+        dst = root / f'{module_name}.d'
+        print(dst)
+
+        with dst.open('w') as d:
+            d.write(f'// pycpptool generated: {datetime.datetime.today()}\n')
+            d.write(f'module windowskits.{package_name}.{module_name};\n')
+
+            d.write(IMPORT)
+            for include in header.includes:
+                d.write(f'public import windowskits.{package_name}.{include.name};\n')
+            d.write(HEAD)
+
+            for node in header.nodes:
+
+                '''
+                snippet = snippet_map.get(module_name)
+                if snippet:
+                    d.write(snippet)
+
+                # alias
+                typedef(d, v.typedef_list)
+
+                # constant
+                const(d, v.const_list)
+
+                # enum
+                enum(d, v.enum_list)
+
+                # struct
+                struct(d, v.struct_list)
+
+                # interface
+                interface(d, v.interface_list, v.iid_map)
+
+                # function
+                function(d, v.function_list)
+                '''
+            d.write(TAIL)
+
+
+        for include in header.includes:
+            self.generate_header(include, root, package_name)
+# }}}
+
 def show(f: TextIO, path: pathlib.Path) -> None:
 
     used: Set[int] = set()
@@ -518,15 +599,7 @@ def show(f: TextIO, path: pathlib.Path) -> None:
         traverse(c)
 
 
-class DlangGenerator:
-    def __init__(self):
-        pass
-
-    def generate(self, headers, dst) -> None:
-        pass
-
-
-def main() -> None:
+def main()->None:
     parser = argparse.ArgumentParser(description='Process cpp header.')
 
     sub = parser.add_subparsers()
@@ -553,7 +626,7 @@ def main() -> None:
     sub_gen.add_argument(
         'entrypoint', help='parse target')
     sub_gen.add_argument(
-        '-o', '--outfolder', type=argparse.FileType, required=True)
+        '-o', '--outfolder', required=True)
     sub_gen.add_argument(
         '-i', '--include', action='append')
     sub_gen.add_argument(
@@ -576,14 +649,21 @@ def main() -> None:
     elif args.action == 'parse':
         headers = parse(path, include)
         parse_macro(headers, path, include)
-        # print
         headers[str(path)].print_nodes()
     elif args.action == 'gen':
-        header = parse(path, include)
+        headers = parse(path, include)
+        parse_macro(headers, path, include)
+        kit_name = path.parent.parent.name
 
         if args.generator == 'dlang':
             gen = DlangGenerator()
-            gen.generate(header, pathlib.Path(str(args.outfolder)).absolute())
+            dlang_root = pathlib.Path(str(args.outfolder)).resolve()
+
+            gen.generate(
+                    headers[str(path)],
+                    dlang_root,
+                    kit_name
+                    )
 
     else:
         raise Exception()
