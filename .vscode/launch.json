@@ -3,7 +3,8 @@
     // 既存の属性の説明をホバーして表示します。
     // 詳細情報は次を確認してください: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
-    "configurations": [{
+    "configurations": [
+        {
             "name": "Python: sample.h",
             "type": "python",
             "request": "launch",
@@ -22,11 +23,16 @@
             "args": [
                 "gen",
                 "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/dxgi.h",
-                "-i", "dxgicommon.h",
-                "-i", "dxgiformat.h",
-                "-i", "dxgitype.h",
-                "-o", "../windowskits/source",
-                "-g", "dlang"
+                "-i",
+                "dxgicommon.h",
+                "-i",
+                "dxgiformat.h",
+                "-i",
+                "dxgitype.h",
+                "-o",
+                "../windowskits/source",
+                "-g",
+                "dlang"
             ],
             "console": "integratedTerminal"
         },
@@ -35,7 +41,9 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/pycpptool.py",
-            "args": ["C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/um/d3d11.h"],
+            "args": [
+                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/um/d3d11.h"
+            ],
             "console": "integratedTerminal"
         },
         {
@@ -43,7 +51,9 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/pycpptool.py",
-            "args": ["C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/um/d2d1.h"],
+            "args": [
+                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/um/d2d1.h"
+            ],
             "console": "integratedTerminal"
         },
         {
@@ -51,7 +61,43 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/pycpptool.py",
-            "args": ["C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/um/wincodec.h"],
+            "args": [
+                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/um/wincodec.h"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: d3d11.h + d2d1.h",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/pycpptool.py",
+            "args": [
+                "gen",
+                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/d3d11.h",
+                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/d2d1.h",
+                "-i",
+                "d3dtypes.h",
+                "-i",
+                "d3dcommon.h",
+                "-i",
+                "d3d10.h",
+                "-i",
+                "dxgi.h",
+                "-i",
+                "dcommon.h",
+                "-i",
+                "d2dbasetypes.h",
+                "-i",
+                "dxgicommon.h",
+                "-i",
+                "dxgiformat.h",
+                "-i",
+                "dxgitype.h",
+                "-o",
+                "../windowskits/source",
+                "-g",
+                "dlang"
+            ],
             "console": "integratedTerminal"
         },
     ]

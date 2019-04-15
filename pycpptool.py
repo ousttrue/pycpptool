@@ -1,5 +1,7 @@
 import time
+import os
 import argparse
+import tempfile
 import shutil
 import datetime
 import sys
@@ -20,7 +22,7 @@ DEFAULT_CLANG_DLL = pathlib.Path(
 SET_DLL = False
 
 # helper {{{
-def get_tu(path: pathlib.Path,
+def get_tu(path: pathlib.Path, include_path_list: List[pathlib.Path],
            use_macro: bool = False,
            dll: Optional[pathlib.Path] = None) -> cindex.TranslationUnit:
     '''
@@ -44,9 +46,13 @@ def get_tu(path: pathlib.Path,
     if use_macro:
         kw['options'] = cindex.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
 
-    return index.parse(
-        str(path),
-        ['-x', 'c++'], **kw)
+    cpp_args = ['-x', 'c++']
+    for i in include_path_list:
+        value = f'-I{str(i)}'
+        if value not in cpp_args:
+            cpp_args.append(value)
+
+    return index.parse(str(path), cpp_args, **kw)
 
 
 extract_bytes_cache: Dict[pathlib.Path, bytes] = {}
@@ -362,7 +368,7 @@ def get_node(current: pathlib.Path, c: cindex.Cursor) -> Optional[Node]:
     #return Node(current, c)
 
 
-def parse(root_path: pathlib.Path, include: List[str]) -> Dict[str, Header]:
+def parse(tu: cindex.TranslationUnit, include: List[str]) -> Dict[str, Header]:
 
     path_map: Dict[pathlib.Path, Header] = {}
 
@@ -389,9 +395,7 @@ def parse(root_path: pathlib.Path, include: List[str]) -> Dict[str, Header]:
             return
 
         current = get_or_create_header(pathlib.Path(c.location.file.name).resolve())
-        if current.path == root_path:
-            pass
-        elif current.name in include:
+        if current.name in include:
             pass
         else:
             return
@@ -419,7 +423,6 @@ def parse(root_path: pathlib.Path, include: List[str]) -> Dict[str, Header]:
         current.nodes.append(node)
 
     # parse
-    tu = get_tu(root_path)
     for c in tu.cursor.get_children():
         traverse(c)
 
@@ -431,7 +434,7 @@ def parse(root_path: pathlib.Path, include: List[str]) -> Dict[str, Header]:
 
     return path_map
 
-def parse_macro(path_map: Dict[pathlib.Path, Header], root_path: pathlib.Path, include: List[str]) -> None:
+def parse_macro(path_map: Dict[pathlib.Path, Header], tu: cindex.TranslationUnit, include: List[str]) -> None:
 
     name_map = {normalize(pathlib.Path(k).name): v for k, v in path_map.items()}
 
@@ -444,11 +447,18 @@ def parse_macro(path_map: Dict[pathlib.Path, Header], root_path: pathlib.Path, i
             cindex.CursorKind.MACRO_INSTANTIATION,
     ]
 
+    def get_or_create_header(path: pathlib.Path) -> Header:
+        header = path_map.get(path)
+        if not header:
+            header = Header(path)
+            path_map[path] = header
+        return header
+
     def traverse(c: cindex.Cursor) -> None:
         if not c.location.file:
             return
 
-        current = path_map.get(pathlib.Path(c.location.file.name).resolve())
+        current = get_or_create_header(pathlib.Path(c.location.file.name).resolve())
         if not current:
             return
 
@@ -509,7 +519,6 @@ def parse_macro(path_map: Dict[pathlib.Path, Header], root_path: pathlib.Path, i
             pass
 
     # parse
-    tu = get_tu(root_path, True)
     for c in tu.cursor.get_children():
         traverse(c)
 
@@ -542,9 +551,21 @@ D2D1_SNIPPET = '''
 enum D2DERR_RECREATE_TARGET = 0x8899000CL;
 '''
 
+D2D_BASETYPES = '''
+struct D3DCOLORVALUE
+{
+    float r;
+    float g;
+    float b;
+    float a;
+}
+
+'''
+
 snippet_map = {
     'd3d11': D3D11_SNIPPET,
     'd2d1': D2D1_SNIPPET,
+    'd2dbasetypes': D2D_BASETYPES,
 }
 
 def dlang_enum(d: TextIO, node: EnumNode) -> None:
@@ -665,12 +686,6 @@ class DlangGenerator:
 
             for node in header.nodes:
 
-                '''
-                snippet = snippet_map.get(module_name)
-                if snippet:
-                    d.write(snippet)
-                '''
-
                 if isinstance(node, EnumNode):
                     dlang_enum(d, node)
                     d.write('\n')
@@ -703,7 +718,7 @@ class DlangGenerator:
 
 # }}}
 
-def show(f: TextIO, path: pathlib.Path) -> None:
+def show(f: TextIO, path: pathlib.Path, tu: cindex.TranslationUnit) -> None:
 
     used: Set[int] = set()
 
@@ -739,7 +754,6 @@ def show(f: TextIO, path: pathlib.Path) -> None:
         for child in c.get_children():
             traverse(child, indent + '  ')
 
-    tu = get_tu(path)
     for c in tu.cursor.get_children():
         traverse(c)
 
@@ -753,7 +767,7 @@ def main()->None:
     sub_debug = sub.add_parser('debug')
     sub_debug.set_defaults(action='debug')
     sub_debug.add_argument(
-        'entrypoint', help='parse target')
+        'entrypoint', help='parse target', nargs='+')
     sub_debug.add_argument(
         '-i', '--include', action='append')
 
@@ -761,7 +775,7 @@ def main()->None:
     sub_parse = sub.add_parser('parse')
     sub_parse.set_defaults(action='parse')
     sub_parse.add_argument(
-        'entrypoint', help='parse target')
+        'entrypoint', help='parse target', nargs='+')
     sub_parse.add_argument(
         '-i', '--include', action='append')
 
@@ -769,7 +783,7 @@ def main()->None:
     sub_gen = sub.add_parser('gen')
     sub_gen.set_defaults(action='gen')
     sub_gen.add_argument(
-        'entrypoint', help='parse target')
+        'entrypoint', help='parse target', nargs='+')
     sub_gen.add_argument(
         '-o', '--outfolder', required=True)
     sub_gen.add_argument(
@@ -781,39 +795,59 @@ def main()->None:
     # execute
     args = parser.parse_args()
 
-    path = (HERE / args.entrypoint).resolve()
-
-    include = args.include
-    if include:
-        include = [normalize(x) for x in include]
-    else:
+    try:
         include = []
+        if args.include:
+            include += [normalize(x) for x in args.include]
 
-    if args.action == 'debug':
-        show(sys.stdout, path)
-    elif args.action == 'parse':
-        headers = parse(path, include)
-        parse_macro(headers, path, include)
-        headers[path].print_nodes()
-    elif args.action == 'gen':
-        headers = parse(path, include)
-        #for k, v in headers.items():
-        #    print(k, len(v.nodes))
-        parse_macro(headers, path, include)
-        kit_name = path.parent.parent.name
+        tmp_name = None
+        kit_name = ''
+        include_path_list: List[str] = []
+        if isinstance(args.entrypoint, list):
+            fd, tmp_name = tempfile.mkstemp(prefix='tmpheader_', suffix='.h')
+            os.close(fd)
+            with open(tmp_name, 'w', encoding='utf-8') as f:
+                for e in args.entrypoint:
+                    e_path = pathlib.Path(e)
+                    f.write(f'#include "{e_path.name}"\n')
+                    include_path_list.append(e_path.parent)
+                    include.append(normalize(e_path.name))
+                    kit_name = e_path.parent.parent.name
 
-        if args.generator == 'dlang':
-            gen = DlangGenerator()
-            dlang_root = pathlib.Path(str(args.outfolder)).resolve()
+            path = pathlib.Path(tmp_name)
+        else:
+            path = (HERE / args.entrypoint).resolve()
+            kit_name = path.parent.parent.name
+        include.append(path.name)
 
-            gen.generate(
-                    headers[path],
-                    dlang_root,
-                    kit_name
-                    )
+        if args.action == 'debug':
+            tu = get_tu(path, include_path_list)
+            show(sys.stdout, tu, include_path_list)
+        elif args.action == 'parse':
+            headers = parse(get_tu(path, include_path_list), include)
+            parse_macro(headers, get_tu(path, include_path_list, True), include)
+            headers[path].print_nodes()
+        elif args.action == 'gen':
+            headers = parse(get_tu(path, include_path_list), include)
+            #for k, v in headers.items():
+            #    print(k, len(v.nodes))
+            parse_macro(headers, get_tu(path, include_path_list, True), include)
 
-    else:
-        raise Exception()
+            if args.generator == 'dlang':
+                gen = DlangGenerator()
+                dlang_root = pathlib.Path(str(args.outfolder)).resolve()
+
+                gen.generate(
+                        headers[path],
+                        dlang_root,
+                        kit_name
+                        )
+
+        else:
+            raise Exception()
+    finally:
+        if tmp_name:
+            os.unlink(tmp_name)
 
 
 if __name__ == '__main__':
