@@ -13,7 +13,6 @@ import io
 from typing import Dict, List, Optional, Set, TextIO, NamedTuple
 from clang import cindex
 
-
 HERE = pathlib.Path(__file__).resolve().parent
 
 DEFAULT_CLANG_DLL = pathlib.Path(
@@ -21,12 +20,14 @@ DEFAULT_CLANG_DLL = pathlib.Path(
 
 SET_DLL = False
 
+
 # helper {{{
-def get_tu(path: pathlib.Path, include_path_list: List[pathlib.Path],
+def get_tu(path: pathlib.Path,
+           include_path_list: List[pathlib.Path],
            use_macro: bool = False,
            dll: Optional[pathlib.Path] = None) -> cindex.TranslationUnit:
-    '''
-    parse cpp source
+    '''
+    parse cpp source
     '''
     global SET_DLL
 
@@ -37,12 +38,11 @@ def get_tu(path: pathlib.Path, include_path_list: List[pathlib.Path],
         dll = DEFAULT_CLANG_DLL
     if not SET_DLL and dll:
         cindex.Config.set_library_file(str(dll))
-        SET_DLL=True
+        SET_DLL = True
 
     index = cindex.Index.create()
 
-    kw = {
-    }
+    kw = {}
     if use_macro:
         kw['options'] = cindex.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
 
@@ -59,8 +59,8 @@ extract_bytes_cache: Dict[pathlib.Path, bytes] = {}
 
 
 def extract(x: cindex.Cursor) -> str:
-    '''
-    get str for cursor
+    '''
+    get str for cursor
     '''
     start = x.extent.start
     p = pathlib.Path(start.file.name)
@@ -82,7 +82,9 @@ def get_token(cursor: cindex.Cursor) -> int:
         raise Exception('not 1')
     return int(tokens[0])
 
+
 # }}}
+
 
 # Node {{{
 class Node:
@@ -133,14 +135,15 @@ class FunctionNode(Node):
                 #raise(Exception(child.kind))
                 pass
             else:
-                raise(Exception(child.kind))
+                raise (Exception(child.kind))
 
     def __str__(self) -> str:
         return f'{self.name}({", ".join(str(p) for p in self.params)})->{self.ret};'
 
 
 class StructNode(Node):
-    def __init__(self, path: pathlib.Path, c: cindex.Cursor, is_root=True) -> None:
+    def __init__(self, path: pathlib.Path, c: cindex.Cursor,
+                 is_root=True) -> None:
         super().__init__(path, c)
         self.field_type = 'struct'
         if c.kind == cindex.CursorKind.UNION_DECL:
@@ -270,12 +273,12 @@ def get_typedef_type(c: cindex.Cursor) -> cindex.Cursor:
         #raise Exception('not 1')
     typeref = children[0]
     if typeref.kind not in [
-        cindex.CursorKind.TYPE_REF,
-        cindex.CursorKind.STRUCT_DECL,  # maybe forward decl
-        cindex.CursorKind.UNION_DECL,
-        cindex.CursorKind.ENUM_DECL,
-        cindex.CursorKind.TYPE_REF,
-        cindex.CursorKind.PARM_DECL,
+            cindex.CursorKind.TYPE_REF,
+            cindex.CursorKind.STRUCT_DECL,  # maybe forward decl
+            cindex.CursorKind.UNION_DECL,
+            cindex.CursorKind.ENUM_DECL,
+            cindex.CursorKind.TYPE_REF,
+            cindex.CursorKind.PARM_DECL,
     ]:
         raise Exception(f'not TYPE_REF: {typeref.kind}')
     return typeref
@@ -307,6 +310,7 @@ class TypedefNode(Node):
 
     def __str__(self) -> str:
         return f'{self.name} = {self.typedef_type}'
+
 
 def normalize(src: str) -> str:
     if platform.system() == 'Windows':
@@ -343,6 +347,7 @@ class Header(Node):
                 continue
             print(f'{node}')
         print()
+
 
 def get_node(current: pathlib.Path, c: cindex.Cursor) -> Optional[Node]:
     if (c.kind == cindex.CursorKind.STRUCT_DECL
@@ -382,19 +387,20 @@ def parse(tu: cindex.TranslationUnit, include: List[str]) -> Dict[str, Header]:
     used: Dict[int, Node] = {}
 
     kinds = [
-            cindex.CursorKind.UNEXPOSED_DECL,
-            cindex.CursorKind.STRUCT_DECL,
-            cindex.CursorKind.UNION_DECL,
-            cindex.CursorKind.ENUM_DECL,
-            cindex.CursorKind.FUNCTION_DECL,
-            cindex.CursorKind.TYPEDEF_DECL,
+        cindex.CursorKind.UNEXPOSED_DECL,
+        cindex.CursorKind.STRUCT_DECL,
+        cindex.CursorKind.UNION_DECL,
+        cindex.CursorKind.ENUM_DECL,
+        cindex.CursorKind.FUNCTION_DECL,
+        cindex.CursorKind.TYPEDEF_DECL,
     ]
 
     def traverse(c: cindex.Cursor) -> None:
         if not c.location.file:
             return
 
-        current = get_or_create_header(pathlib.Path(c.location.file.name).resolve())
+        current = get_or_create_header(
+            pathlib.Path(c.location.file.name).resolve())
         if current.name in include:
             pass
         else:
@@ -434,17 +440,22 @@ def parse(tu: cindex.TranslationUnit, include: List[str]) -> Dict[str, Header]:
 
     return path_map
 
-def parse_macro(path_map: Dict[pathlib.Path, Header], tu: cindex.TranslationUnit, include: List[str]) -> None:
 
-    name_map = {normalize(pathlib.Path(k).name): v for k, v in path_map.items()}
+def parse_macro(path_map: Dict[pathlib.Path, Header],
+                tu: cindex.TranslationUnit, include: List[str]) -> None:
+
+    name_map = {
+        normalize(pathlib.Path(k).name): v
+        for k, v in path_map.items()
+    }
 
     name_map = {k: v for k, v in name_map.items() if k in include}
 
     kinds = [
-            cindex.CursorKind.UNEXPOSED_DECL,
-            cindex.CursorKind.INCLUSION_DIRECTIVE,
-            cindex.CursorKind.MACRO_DEFINITION,
-            cindex.CursorKind.MACRO_INSTANTIATION,
+        cindex.CursorKind.UNEXPOSED_DECL,
+        cindex.CursorKind.INCLUSION_DIRECTIVE,
+        cindex.CursorKind.MACRO_DEFINITION,
+        cindex.CursorKind.MACRO_INSTANTIATION,
     ]
 
     def get_or_create_header(path: pathlib.Path) -> Header:
@@ -458,7 +469,8 @@ def parse_macro(path_map: Dict[pathlib.Path, Header], tu: cindex.TranslationUnit
         if not c.location.file:
             return
 
-        current = get_or_create_header(pathlib.Path(c.location.file.name).resolve())
+        current = get_or_create_header(
+            pathlib.Path(c.location.file.name).resolve())
         if not current:
             return
 
@@ -477,7 +489,7 @@ def parse_macro(path_map: Dict[pathlib.Path, Header], tu: cindex.TranslationUnit
             tokens = [t.spelling for t in c.get_tokens()]
             if '<' in tokens:
                 carret = tokens.index('<')
-                header_name = ''.join(tokens[carret+1:-1])
+                header_name = ''.join(tokens[carret + 1:-1])
             else:
                 header_name = tokens[-1][1:-1]
 
@@ -495,25 +507,24 @@ def parse_macro(path_map: Dict[pathlib.Path, Header], tu: cindex.TranslationUnit
                 return
 
             if tokens in [
-                    ['IID_ID3DBlob', 'IID_ID3D10Blob'],
-                    ['INTERFACE', 'ID3DInclude'],
-                    ['D2D1_INVALID_TAG', 'ULONGLONG_MAX'],
-                    ['D2D1FORCEINLINE', 'FORCEINLINE'],
-                    ]:
+                ['IID_ID3DBlob', 'IID_ID3D10Blob'],
+                ['INTERFACE', 'ID3DInclude'],
+                ['D2D1_INVALID_TAG', 'ULONGLONG_MAX'],
+                ['D2D1FORCEINLINE', 'FORCEINLINE'],
+            ]:
                 #define IID_ID3DBlob IID_ID3D10Blob
                 #define INTERFACE ID3DInclude
                 #define D2D1_INVALID_TAG ULONGLONG_MAX
                 #define D2D1FORCEINLINE FORCEINLINE
                 return
 
-            if len(tokens)>=3 and tokens[1]=='(' and tokens[2][0].isalpha():
-                 # maybe macro function
+            if len(tokens) >= 3 and tokens[1] == '(' and tokens[2][0].isalpha(
+            ):
+                # maybe macro function
                 return
 
             return current.macro_defnitions.append(
-                    MacroDefinition(
-                        c.spelling, 
-                        ' '.join(x for x in tokens[1:])))
+                MacroDefinition(c.spelling, ' '.join(x for x in tokens[1:])))
 
         if c.kind == cindex.CursorKind.MACRO_INSTANTIATION:
             pass
@@ -523,43 +534,41 @@ def parse_macro(path_map: Dict[pathlib.Path, Header], tu: cindex.TranslationUnit
         traverse(c)
 
 
-
 # }}}
 
 # dlang {{{
-IMPORT = '''
-import core.sys.windows.windef;
-import core.sys.windows.com;
+IMPORT = '''
+import core.sys.windows.windef;
+import core.sys.windows.com;
 '''
 
-HEAD = '''
-extern(Windows){
-
-alias IID = GUID;
-
+HEAD = '''
+extern(Windows){
+
+alias IID = GUID;
+
 '''
 
-
-TAIL = '''
-}
+TAIL = '''
+}
 '''
 
-D3D11_SNIPPET = '''
+D3D11_SNIPPET = '''
 '''
 
-D2D1_SNIPPET = '''
-enum D2DERR_RECREATE_TARGET = 0x8899000CL;
+D2D1_SNIPPET = '''
+enum D2DERR_RECREATE_TARGET = 0x8899000CL;
 '''
 
-D2D_BASETYPES = '''
-struct D3DCOLORVALUE
-{
-    float r;
-    float g;
-    float b;
-    float a;
-}
-
+D2D_BASETYPES = '''
+struct D3DCOLORVALUE
+{
+    float r;
+    float g;
+    float b;
+    float a;
+}
+
 '''
 
 snippet_map = {
@@ -568,24 +577,26 @@ snippet_map = {
     'd2dbasetypes': D2D_BASETYPES,
 }
 
+
 def dlang_enum(d: TextIO, node: EnumNode) -> None:
     d.write(f'enum {node.name} {{\n')
     for v in node.values:
         name = v.name
         if name.startswith(node.name):
             # invalid: DXGI_FORMAT_420_OPAQUE
-            if name[len(node.name)+1].isnumeric():
-                name = name[len(node.name)+0:]
+            if name[len(node.name) + 1].isnumeric():
+                name = name[len(node.name) + 0:]
             else:
-                name = name[len(node.name)+1:]
+                name = name[len(node.name) + 1:]
         else:
             for suffix in ['_FLAG', '_MODE']:
                 suffix_len = len(suffix)
-                if node.name.endswith(suffix) and name.startswith(node.name[:-suffix_len]):
-                    if name[len(node.name)-suffix_len+1].isnumeric():
-                        name = name[len(node.name)-suffix_len:]
+                if node.name.endswith(suffix) and name.startswith(
+                        node.name[:-suffix_len]):
+                    if name[len(node.name) - suffix_len + 1].isnumeric():
+                        name = name[len(node.name) - suffix_len:]
                     else:
-                        name = name[len(node.name)-suffix_len+1:]
+                        name = name[len(node.name) - suffix_len + 1:]
                     break
 
         value = v.value
@@ -594,6 +605,7 @@ def dlang_enum(d: TextIO, node: EnumNode) -> None:
 
         d.write(f'    {name} = {value},\n')
     d.write(f'}}\n')
+
 
 def dlang_alias(d: TextIO, node: TypedefNode) -> None:
     if node.name.startswith('PFN_'):
@@ -605,23 +617,27 @@ def dlang_alias(d: TextIO, node: TypedefNode) -> None:
             typedef_type = typedef_type[7:]
         d.write(f'alias {node.name} = {typedef_type};\n')
 
+
 def repl(m):
     return m[0][1:]
-def to_d(param_type: str)->str:
-    param_type = (param_type
-            .replace('&', '*')
-            .replace('*const *', '**'))
-    if param_type[0] == 'I': # is_instance
-        param_type = re.sub(r'\*+', repl, param_type) # reduce *
+
+
+def to_d(param_type: str) -> str:
+    param_type = (param_type.replace('&', '*').replace('*const *', '**'))
+    if param_type[0] == 'I':  # is_instance
+        param_type = re.sub(r'\*+', repl, param_type)  # reduce *
     return param_type
 
-def dlang_function(d: TextIO, m: FunctionNode, indent = '') -> None:
+
+def dlang_function(d: TextIO, m: FunctionNode, indent='') -> None:
     ret = m.ret if m.ret else 'void'
-    params = ', '.join(f'{to_d(p.param_type)} {p.param_name}' for p in m.params)
-    d.write(f'{indent}{ret} {m.name}({params});\n');
+    params = ', '.join(f'{to_d(p.param_type)} {p.param_name}'
+                       for p in m.params)
+    d.write(f'{indent}{ret} {m.name}({params});\n')
+
 
 def dlang_struct(d: TextIO, node: StructNode) -> None:
-    if node.name[0]=='I':
+    if node.name[0] == 'I':
         # com interface
         base = node.base
         if not base:
@@ -642,10 +658,8 @@ class DlangGenerator:
     def __init__(self) -> None:
         self.used: Set[str] = set()
 
-    def generate(self, header: Header,
-            dlang_root: pathlib.Path,
-            kit_name: str
-            ) -> None:
+    def generate(self, header: Header, dlang_root: pathlib.Path,
+                 kit_name: str) -> None:
         package_name = f'build_{kit_name.replace(".", "_")}'
         root = dlang_root / 'windowskits' / package_name
 
@@ -656,8 +670,8 @@ class DlangGenerator:
 
         self._generate_header(header, root, package_name)
 
-    def _generate_header(self, header: Header, 
-            root: pathlib.Path, package_name: str):
+    def _generate_header(self, header: Header, root: pathlib.Path,
+                         package_name: str):
 
         module_name = header.name[:-2]
 
@@ -674,7 +688,9 @@ class DlangGenerator:
 
             d.write(IMPORT)
             for include in header.includes:
-                d.write(f'public import windowskits.{package_name}.{include.name[:-2]};\n')
+                d.write(
+                    f'public import windowskits.{package_name}.{include.name[:-2]};\n'
+                )
             d.write(HEAD)
 
             snippet = snippet_map.get(module_name)
@@ -695,7 +711,7 @@ class DlangGenerator:
                 elif isinstance(node, StructNode):
                     if node.is_forward:
                         continue
-                    if node.name[0] == 'C': # class
+                    if node.name[0] == 'C':  # class
                         continue
                     dlang_struct(d, node)
                     d.write('\n')
@@ -705,18 +721,18 @@ class DlangGenerator:
                 else:
                     #raise Exception(type(node))
                     pass
-
-                '''
-                # constant
-                const(d, v.const_list)
+                '''
+                # constant
+                const(d, v.const_list)
                 '''
             d.write(TAIL)
-
 
         for include in header.includes:
             self._generate_header(include, root, package_name)
 
+
 # }}}
+
 
 def show(f: TextIO, path: pathlib.Path, tu: cindex.TranslationUnit) -> None:
 
@@ -758,7 +774,7 @@ def show(f: TextIO, path: pathlib.Path, tu: cindex.TranslationUnit) -> None:
         traverse(c)
 
 
-def main()->None:
+def main() -> None:
     parser = argparse.ArgumentParser(description='Process cpp header.')
 
     sub = parser.add_subparsers()
@@ -766,31 +782,26 @@ def main()->None:
     # debug
     sub_debug = sub.add_parser('debug')
     sub_debug.set_defaults(action='debug')
-    sub_debug.add_argument(
-        'entrypoint', help='parse target', nargs='+')
-    sub_debug.add_argument(
-        '-i', '--include', action='append')
+    sub_debug.add_argument('entrypoint', help='parse target', nargs='+')
+    sub_debug.add_argument('-i', '--include', action='append')
 
     # parse
     sub_parse = sub.add_parser('parse')
     sub_parse.set_defaults(action='parse')
-    sub_parse.add_argument(
-        'entrypoint', help='parse target', nargs='+')
-    sub_parse.add_argument(
-        '-i', '--include', action='append')
+    sub_parse.add_argument('entrypoint', help='parse target', nargs='+')
+    sub_parse.add_argument('-i', '--include', action='append')
 
     # generator
     sub_gen = sub.add_parser('gen')
     sub_gen.set_defaults(action='gen')
-    sub_gen.add_argument(
-        'entrypoint', help='parse target', nargs='+')
-    sub_gen.add_argument(
-        '-o', '--outfolder', required=True)
-    sub_gen.add_argument(
-        '-i', '--include', action='append')
-    sub_gen.add_argument(
-        '-g', '--generator', help='code generator', choices=['dlang'],
-        required=True)
+    sub_gen.add_argument('entrypoint', help='parse target', nargs='+')
+    sub_gen.add_argument('-o', '--outfolder', required=True)
+    sub_gen.add_argument('-i', '--include', action='append')
+    sub_gen.add_argument('-g',
+                         '--generator',
+                         help='code generator',
+                         choices=['dlang'],
+                         required=True)
 
     # execute
     args = parser.parse_args()
@@ -825,23 +836,21 @@ def main()->None:
             show(sys.stdout, tu, include_path_list)
         elif args.action == 'parse':
             headers = parse(get_tu(path, include_path_list), include)
-            parse_macro(headers, get_tu(path, include_path_list, True), include)
+            parse_macro(headers, get_tu(path, include_path_list, True),
+                        include)
             headers[path].print_nodes()
         elif args.action == 'gen':
             headers = parse(get_tu(path, include_path_list), include)
             #for k, v in headers.items():
             #    print(k, len(v.nodes))
-            parse_macro(headers, get_tu(path, include_path_list, True), include)
+            parse_macro(headers, get_tu(path, include_path_list, True),
+                        include)
 
             if args.generator == 'dlang':
                 gen = DlangGenerator()
                 dlang_root = pathlib.Path(str(args.outfolder)).resolve()
 
-                gen.generate(
-                        headers[path],
-                        dlang_root,
-                        kit_name
-                        )
+                gen.generate(headers[path], dlang_root, kit_name)
 
         else:
             raise Exception()
