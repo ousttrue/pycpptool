@@ -3,12 +3,11 @@
     // 既存の属性の説明をホバーして表示します。
     // 詳細情報は次を確認してください: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
-    "configurations": [
-        {
+    "configurations": [{
             "name": "Python: sample.h",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/pycpptool.py",
+            "program": "${workspaceFolder}/run.py",
             "args": [
                 "parse",
                 "sample.h",
@@ -19,7 +18,7 @@
             "name": "Python: dxgi.h",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/pycpptool.py",
+            "program": "${workspaceFolder}/run.py",
             "args": [
                 "gen",
                 "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/dxgi.h",
@@ -32,7 +31,7 @@
                 "-o",
                 "../windowskits/source",
                 "-g",
-                "dlang"
+                "csharp"
             ],
             "console": "integratedTerminal"
         },
@@ -40,7 +39,7 @@
             "name": "Python: d3d11.h",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/pycpptool.py",
+            "program": "${workspaceFolder}/run.py",
             "args": [
                 "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/um/d3d11.h"
             ],
@@ -50,7 +49,7 @@
             "name": "Python: d2d1.h",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/pycpptool.py",
+            "program": "${workspaceFolder}/run.py",
             "args": [
                 "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/um/d2d1.h"
             ],
@@ -60,7 +59,7 @@
             "name": "Python: wincodec.h",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/pycpptool.py",
+            "program": "${workspaceFolder}/run.py",
             "args": [
                 "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/um/wincodec.h"
             ],
@@ -70,7 +69,7 @@
             "name": "Python: d3d11.h + d2d1.h",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/pycpptool.py",
+            "program": "${workspaceFolder}/pycpptoolrunpy",
             "args": [
                 "gen",
                 "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/d3d11.h",

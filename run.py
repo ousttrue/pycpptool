@@ -1,0 +1,3 @@
+import pycpptool
+
+pycpptool.main()
