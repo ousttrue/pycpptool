@@ -2,7 +2,6 @@ import time
 import os
 import argparse
 import tempfile
-import shutil
 import datetime
 import sys
 import re
@@ -10,13 +9,13 @@ import platform
 import pathlib
 import uuid
 import io
+import shutil
 from typing import Dict, List, Optional, Set, TextIO, NamedTuple
 from clang import cindex
 
 HERE = pathlib.Path(__file__).resolve().parent
 
-DEFAULT_CLANG_DLL = pathlib.Path(
-    "C:/Program Files (x86)/LLVM/bin/libclang.dll")
+DEFAULT_CLANG_DLL = pathlib.Path("C:/Program Files/LLVM/bin/libclang.dll")
 
 SET_DLL = False
 
@@ -26,8 +25,10 @@ def get_tu(path: pathlib.Path,
            include_path_list: List[pathlib.Path],
            use_macro: bool = False,
            dll: Optional[pathlib.Path] = None) -> cindex.TranslationUnit:
-    '''
-    parse cpp source
+    '''
+
+    parse cpp source
+
     '''
     global SET_DLL
 
@@ -59,8 +60,10 @@ extract_bytes_cache: Dict[pathlib.Path, bytes] = {}
 
 
 def extract(x: cindex.Cursor) -> str:
-    '''
-    get str for cursor
+    '''
+
+    get str for cursor
+
     '''
     start = x.extent.start
     p = pathlib.Path(start.file.name)
@@ -537,38 +540,60 @@ def parse_macro(path_map: Dict[pathlib.Path, Header],
 # }}}
 
 # dlang {{{
-IMPORT = '''
-import core.sys.windows.windef;
-import core.sys.windows.com;
+IMPORT = '''
+
+import core.sys.windows.windef;
+
+import core.sys.windows.com;
+
 '''
 
-HEAD = '''
-extern(Windows){
-
-alias IID = GUID;
-
+HEAD = '''
+
+extern(Windows){
+
+
+
+alias IID = GUID;
+
+
+
 '''
 
-TAIL = '''
-}
+TAIL = '''
+
+}
+
 '''
 
-D3D11_SNIPPET = '''
+D3D11_SNIPPET = '''
+
 '''
 
-D2D1_SNIPPET = '''
-enum D2DERR_RECREATE_TARGET = 0x8899000CL;
+D2D1_SNIPPET = '''
+
+enum D2DERR_RECREATE_TARGET = 0x8899000CL;
+
 '''
 
-D2D_BASETYPES = '''
-struct D3DCOLORVALUE
-{
-    float r;
-    float g;
-    float b;
-    float a;
-}
-
+D2D_BASETYPES = '''
+
+struct D3DCOLORVALUE
+
+{
+
+    float r;
+
+    float g;
+
+    float b;
+
+    float a;
+
+}
+
+
+
 '''
 
 snippet_map = {
@@ -721,9 +746,12 @@ class DlangGenerator:
                 else:
                     #raise Exception(type(node))
                     pass
-                '''
-                # constant
-                const(d, v.const_list)
+                '''
+
+                # constant
+
+                const(d, v.const_list)
+
                 '''
             d.write(TAIL)
 

@@ -1,11 +1,19 @@
 {
     "cSpell.words": [
         "cindex",
+        "d",
+        "dbasetypes",
+        "dcolorvalue",
         "decl",
+        "derr",
         "dlang",
+        "iidof",
         "llvm",
         "midl",
+        "nargs",
         "pycpptool",
+        "rmtree",
+        "shutil",
         "struct"
     ]
 }
