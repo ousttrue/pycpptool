@@ -1,5 +1,5 @@
 import pathlib
-from .header_parser import Header
+from .cindex_parser import Header
 
 
 class CSharpGenerator:

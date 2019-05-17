@@ -3,9 +3,8 @@ import pathlib
 import time
 import shutil
 import re
-import uuid
 from typing import TextIO, Set
-from .header_parser import EnumNode, TypedefNode, FunctionNode, StructNode, Header
+from .cindex_parser import EnumNode, TypedefNode, FunctionNode, StructNode, Header
 
 # dlang {{{
 IMPORT = '''
@@ -107,8 +106,7 @@ def to_d(param_type: str) -> str:
 
 def dlang_function(d: TextIO, m: FunctionNode, indent='') -> None:
     ret = m.ret if m.ret else 'void'
-    params = ', '.join(f'{to_d(p.param_type)} {p.param_name}'
-                       for p in m.params)
+    params = ', '.join(f'{to_d(p.param_type)} {p.param_name}' for p in m.params)
     d.write(f'{indent}{ret} {m.name}({params});\n')
 
 
@@ -131,6 +129,7 @@ def dlang_struct(d: TextIO, node: StructNode) -> None:
 
 
 class DlangGenerator:
+
     def __init__(self) -> None:
         self.used: Set[str] = set()
 

@@ -7,6 +7,54 @@ from clang import cindex
 
 extract_bytes_cache: Dict[pathlib.Path, bytes] = {}
 
+# helper {{{
+DEFAULT_CLANG_DLL = pathlib.Path("C:/Program Files/LLVM/bin/libclang.dll")
+SET_DLL = False
+
+
+def get_tu(path: pathlib.Path,
+           include_path_list: List[pathlib.Path],
+           use_macro: bool = False,
+           dll: Optional[pathlib.Path] = None) -> cindex.TranslationUnit:
+    '''
+    parse cpp source
+    '''
+    global SET_DLL
+
+    if not path.exists():
+        raise FileNotFoundError(str(path))
+
+    if not dll and DEFAULT_CLANG_DLL.exists():
+        dll = DEFAULT_CLANG_DLL
+    if not SET_DLL and dll:
+        cindex.Config.set_library_file(str(dll))
+        SET_DLL = True
+
+    index = cindex.Index.create()
+
+    kw = {}
+    if use_macro:
+        kw['options'] = cindex.TranslationUnit.PARSE_DETAILED_PROCESSING_RECORD
+
+    cpp_args = ['-x', 'c++']
+    for i in include_path_list:
+        value = f'-I{str(i)}'
+        if value not in cpp_args:
+            cpp_args.append(value)
+
+    return index.parse(str(path), cpp_args, **kw)
+
+
+# def get_token(cursor: cindex.Cursor) -> int:
+#     if cursor.kind != cindex.CursorKind.INTEGER_LITERAL:
+#         raise Exception('not int')
+#     tokens = [x.spelling for x in cursor.get_tokens()]
+#     if len(tokens) != 1:
+#         raise Exception('not 1')
+#     return int(tokens[0])
+
+# }}}
+
 
 def extract(x: cindex.Cursor) -> str:
     '''
@@ -25,6 +73,7 @@ def extract(x: cindex.Cursor) -> str:
 
 
 class Node:
+
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         self.name = c.spelling
         self.path = path
@@ -50,6 +99,7 @@ class MethodParam(NamedTuple):
 
 
 class FunctionNode(Node):
+
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         super().__init__(path, c)
         self.ret = ''
@@ -79,6 +129,7 @@ class FunctionNode(Node):
 
 
 class StructNode(Node):
+
     def __init__(self, path: pathlib.Path, c: cindex.Cursor,
                  is_root=True) -> None:
         super().__init__(path, c)
@@ -179,6 +230,7 @@ class EnumValue(NamedTuple):
 
 
 class EnumNode(Node):
+
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         super().__init__(path, c)
         self.values: List[EnumValue] = []
@@ -222,6 +274,7 @@ def get_typedef_type(c: cindex.Cursor) -> cindex.Cursor:
 
 
 class TypedefNode(Node):
+
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         super().__init__(path, c)
         typedef_type = get_typedef_type(c)
@@ -261,6 +314,7 @@ class MacroDefinition(NamedTuple):
 
 
 class Header(Node):
+
     def __init__(self, path: pathlib.Path) -> None:
         self.path = path
         self.includes: List[Header] = []
@@ -287,8 +341,8 @@ class Header(Node):
 
 
 def get_node(current: pathlib.Path, c: cindex.Cursor) -> Optional[Node]:
-    if (c.kind == cindex.CursorKind.STRUCT_DECL
-            or c.kind == cindex.CursorKind.UNION_DECL):
+    if (c.kind == cindex.CursorKind.STRUCT_DECL or
+            c.kind == cindex.CursorKind.UNION_DECL):
         struct = StructNode(current, c)
         return struct
     if c.kind == cindex.CursorKind.ENUM_DECL:
@@ -381,10 +435,7 @@ def parse(tu: cindex.TranslationUnit, include: List[str]) -> Dict[str, Header]:
 def parse_macro(path_map: Dict[pathlib.Path, Header],
                 tu: cindex.TranslationUnit, include: List[str]) -> None:
 
-    name_map = {
-        normalize(pathlib.Path(k).name): v
-        for k, v in path_map.items()
-    }
+    name_map = {normalize(pathlib.Path(k).name): v for k, v in path_map.items()}
 
     name_map = {k: v for k, v in name_map.items() if k in include}
 
@@ -414,7 +465,6 @@ def parse_macro(path_map: Dict[pathlib.Path, Header],
         used[c.hash] = True
 
         current = get_or_create_header(
-
             pathlib.Path(c.location.file.name).resolve())
         if not current:
             return
@@ -463,8 +513,7 @@ def parse_macro(path_map: Dict[pathlib.Path, Header],
                 #define D2D1FORCEINLINE FORCEINLINE
                 return
 
-            if len(tokens) >= 3 and tokens[1] == '(' and tokens[2][0].isalpha(
-            ):
+            if len(tokens) >= 3 and tokens[1] == '(' and tokens[2][0].isalpha():
                 # maybe macro function
                 return
 
