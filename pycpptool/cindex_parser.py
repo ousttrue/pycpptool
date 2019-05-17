@@ -73,7 +73,6 @@ def extract(x: cindex.Cursor) -> str:
 
 
 class Node:
-
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         self.name = c.spelling
         self.path = path
@@ -99,7 +98,6 @@ class MethodParam(NamedTuple):
 
 
 class FunctionNode(Node):
-
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         super().__init__(path, c)
         self.ret = ''
@@ -129,7 +127,6 @@ class FunctionNode(Node):
 
 
 class StructNode(Node):
-
     def __init__(self, path: pathlib.Path, c: cindex.Cursor,
                  is_root=True) -> None:
         super().__init__(path, c)
@@ -230,7 +227,6 @@ class EnumValue(NamedTuple):
 
 
 class EnumNode(Node):
-
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         super().__init__(path, c)
         self.values: List[EnumValue] = []
@@ -274,7 +270,6 @@ def get_typedef_type(c: cindex.Cursor) -> cindex.Cursor:
 
 
 class TypedefNode(Node):
-
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         super().__init__(path, c)
         typedef_type = get_typedef_type(c)
@@ -313,14 +308,17 @@ class MacroDefinition(NamedTuple):
     value: str
 
 
-class Header(Node):
-
-    def __init__(self, path: pathlib.Path) -> None:
+class Header:
+    def __init__(self, path: pathlib.Path, hash: int) -> None:
         self.path = path
+        self.hash = hash
         self.includes: List[Header] = []
         self.nodes: List[Node] = []
         self.name = normalize(self.path.name)
         self.macro_defnitions: List[MacroDefinition] = []
+
+    def __str__(self) -> str:
+        return f'<Header: {self.hash}: {self.path}>'
 
     def print_nodes(self, used: Set[pathlib.Path] = None) -> None:
         if not used:
@@ -341,8 +339,8 @@ class Header(Node):
 
 
 def get_node(current: pathlib.Path, c: cindex.Cursor) -> Optional[Node]:
-    if (c.kind == cindex.CursorKind.STRUCT_DECL or
-            c.kind == cindex.CursorKind.UNION_DECL):
+    if (c.kind == cindex.CursorKind.STRUCT_DECL
+            or c.kind == cindex.CursorKind.UNION_DECL):
         struct = StructNode(current, c)
         return struct
     if c.kind == cindex.CursorKind.ENUM_DECL:
@@ -368,10 +366,11 @@ def parse(tu: cindex.TranslationUnit, include: List[str]) -> Dict[str, Header]:
 
     path_map: Dict[pathlib.Path, Header] = {}
 
-    def get_or_create_header(path: pathlib.Path) -> Header:
+    def get_or_create_header(c) -> Header:
+        path = pathlib.Path(c.location.file.name).resolve()
         header = path_map.get(path)
         if not header:
-            header = Header(path)
+            header = Header(path, c.hash)
             path_map[path] = header
         return header
 
@@ -390,8 +389,7 @@ def parse(tu: cindex.TranslationUnit, include: List[str]) -> Dict[str, Header]:
         if not c.location.file:
             return
 
-        current = get_or_create_header(
-            pathlib.Path(c.location.file.name).resolve())
+        current = get_or_create_header(c)
         if current.name in include:
             pass
         else:
@@ -435,7 +433,10 @@ def parse(tu: cindex.TranslationUnit, include: List[str]) -> Dict[str, Header]:
 def parse_macro(path_map: Dict[pathlib.Path, Header],
                 tu: cindex.TranslationUnit, include: List[str]) -> None:
 
-    name_map = {normalize(pathlib.Path(k).name): v for k, v in path_map.items()}
+    name_map = {
+        normalize(pathlib.Path(k).name): v
+        for k, v in path_map.items()
+    }
 
     name_map = {k: v for k, v in name_map.items() if k in include}
 
@@ -443,30 +444,28 @@ def parse_macro(path_map: Dict[pathlib.Path, Header],
         cindex.CursorKind.UNEXPOSED_DECL,
         cindex.CursorKind.INCLUSION_DIRECTIVE,
         cindex.CursorKind.MACRO_DEFINITION,
-        cindex.CursorKind.MACRO_INSTANTIATION,
+        #cindex.CursorKind.MACRO_INSTANTIATION,
     ]
 
-    def get_or_create_header(path: pathlib.Path) -> Header:
+    def get_or_create_header(c) -> Header:
+        path = pathlib.Path(c.location.file.name).resolve()
         header = path_map.get(path)
         if not header:
-            header = Header(path)
+            header = Header(path, c.hash)
             path_map[path] = header
         return header
-
-    used: Dict[int, Node] = {}
 
     def traverse(c: cindex.Cursor) -> None:
         if not c.location.file:
             return
 
-        if c.hash in used:
-            # already processed
-            return
-        used[c.hash] = True
-
-        current = get_or_create_header(
-            pathlib.Path(c.location.file.name).resolve())
+        current = get_or_create_header(c)
         if not current:
+            return
+
+        if current.name in include:
+            pass
+        else:
             return
 
         if c.kind not in kinds:
@@ -513,15 +512,13 @@ def parse_macro(path_map: Dict[pathlib.Path, Header],
                 #define D2D1FORCEINLINE FORCEINLINE
                 return
 
-            if len(tokens) >= 3 and tokens[1] == '(' and tokens[2][0].isalpha():
+            if len(tokens) >= 3 and tokens[1] == '(' and tokens[2][0].isalpha(
+            ):
                 # maybe macro function
                 return
 
             return current.macro_defnitions.append(
                 MacroDefinition(c.spelling, ' '.join(x for x in tokens[1:])))
-
-        if c.kind == cindex.CursorKind.MACRO_INSTANTIATION:
-            pass
 
     # parse
     for c in tu.cursor.get_children():
