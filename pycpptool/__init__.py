@@ -1,18 +1,13 @@
-import time
 import os
 import argparse
 import tempfile
-import datetime
 import sys
-import re
-import platform
 import pathlib
-import uuid
-import io
-import shutil
-from typing import Dict, List, Optional, Set, TextIO, NamedTuple
+import logging
+from typing import List, Optional, Set, TextIO
 from clang import cindex
-from . import dlang, header_parser
+from . import csharp, dlang, header_parser
+logger = logging.getLogger(__name__)
 
 HERE = pathlib.Path(__file__).resolve().parent
 
@@ -108,6 +103,11 @@ def show(f: TextIO, path: pathlib.Path, tu: cindex.TranslationUnit) -> None:
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.DEBUG,
+        datefmt='%H:%M:%S',
+        format='%(asctime)s[%(levelname)s][%(name)s.%(funcName)s] %(message)s')
+
     parser = argparse.ArgumentParser(description='Process cpp header.')
 
     sub = parser.add_subparsers()
@@ -133,7 +133,7 @@ def main() -> None:
     sub_gen.add_argument('-g',
                          '--generator',
                          help='code generator',
-                         choices=['dlang'],
+                         choices=['dlang', 'csharp'],
                          required=True)
 
     # execute
@@ -175,19 +175,26 @@ def main() -> None:
                                       include)
             headers[path].print_nodes()
         elif args.action == 'gen':
+            logger.debug('parse...')
             headers = header_parser.parse(get_tu(path, include_path_list),
                                           include)
-            #for k, v in headers.items():
+            # for k, v in headers.items():
             #    print(k, len(v.nodes))
+            logger.debug('parse_macro...')
             header_parser.parse_macro(headers,
                                       get_tu(path, include_path_list, True),
                                       include)
 
+            logger.debug('generate...')
             if args.generator == 'dlang':
                 gen = dlang.DlangGenerator()
                 dlang_root = pathlib.Path(str(args.outfolder)).resolve()
-
                 gen.generate(headers[path], dlang_root, kit_name)
+
+            elif args.generator == 'csharp':
+                gen = csharp.CSharpGenerator()
+                csharp_root = pathlib.Path(str(args.outfolder)).resolve()
+                gen.generate(headers[path], csharp_root, kit_name)
 
         else:
             raise Exception()

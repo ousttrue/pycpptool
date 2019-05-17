@@ -402,11 +402,19 @@ def parse_macro(path_map: Dict[pathlib.Path, Header],
             path_map[path] = header
         return header
 
+    used: Dict[int, Node] = {}
+
     def traverse(c: cindex.Cursor) -> None:
         if not c.location.file:
             return
 
+        if c.hash in used:
+            # already processed
+            return
+        used[c.hash] = True
+
         current = get_or_create_header(
+
             pathlib.Path(c.location.file.name).resolve())
         if not current:
             return
