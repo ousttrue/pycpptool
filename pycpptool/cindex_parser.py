@@ -127,6 +127,12 @@ class FunctionNode(Node):
 
 
 class StructNode(Node):
+    '''
+    struct or struct field. can nested.
+
+    field_type: struct, union, int, char, int[] etc...
+    '''
+
     def __init__(self, path: pathlib.Path, c: cindex.Cursor,
                  is_root=True) -> None:
         super().__init__(path, c)

@@ -97,7 +97,7 @@ def main() -> None:
 
         kit_name = ''
         include_path_list: List[str] = []
-        if isinstance(args.entrypoint, list):
+        if len(args.entrypoint) > 1:
             fd, tmp_name = tempfile.mkstemp(prefix='tmpheader_', suffix='.h')
             os.close(fd)
             with open(tmp_name, 'w', encoding='utf-8') as f:
@@ -110,7 +110,7 @@ def main() -> None:
 
             path = pathlib.Path(tmp_name)
         else:
-            path = (HERE / args.entrypoint).resolve()
+            path = (HERE / args.entrypoint[0]).resolve()
             kit_name = path.parent.parent.name
         include.append(path.name)
 
