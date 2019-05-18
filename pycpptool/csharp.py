@@ -116,7 +116,7 @@ def to_cs(param_type: str) -> str:
     count = param_type.count('*')
     if count == 0:
         if param_type == 'IUnknown':
-            param_type = '/* IUnknown* */object'
+            param_type = '/* IUnknown* */IntPtr'
 
     elif count == 1:
         if 'void' in param_type:
@@ -124,7 +124,7 @@ def to_cs(param_type: str) -> str:
         else:
             ref = 'ref ' + param_type.replace('*', '').strip()
             if ref == 'ref IUnknown':
-                ref = '/* IUnknown** */ref object'
+                ref = '/* IUnknown** */ref IntPtr'
         #print(f'{param_type} => "{ref}"')
         param_type = ref
 
@@ -146,7 +146,7 @@ def write_function(d: TextIO, m: FunctionNode, indent='', extern='') -> None:
 
     if extern:
         pass
-        d.write(f'[DllImport("{extern}")]')
+        d.write(f'[DllImport("{extern}")]\n')
         d.write(f'{indent}public static extern {ret} {m.name}({params});\n')
     else:
         d.write(f'{indent}{ret} {m.name}({params});\n')
@@ -166,6 +166,7 @@ def write_field(d: TextIO, f: StructNode, indent='') -> None:
 
     m = ARRAY_PATTERN.match(field_type)
     if m:
+        # some[size]; sized array
         if m.group(1) == 'WCHAR':
             d.write(
                 f'{indent}[MarshalAs(UnmanagedType.ByValTStr, SizeConst={int(m.group(2))})]\n'
@@ -176,10 +177,11 @@ def write_field(d: TextIO, f: StructNode, indent='') -> None:
                 f'{indent}[MarshalAs(UnmanagedType.ByValArray, SizeConst={int(m.group(2))})]\n'
             )
             field_type = f'{m.group(1)}[]'
-        d.write(f'{indent}{field_type} {f.name};\n')
+        d.write(f'{indent}public {field_type} {f.name};\n')
 
     else:
-        d.write(f'{indent}{field_type} {f.name};\n')
+        # other
+        d.write(f'{indent}public {field_type} {f.name};\n')
 
 
 def write_struct(d: TextIO, node: StructNode) -> None:
@@ -190,13 +192,14 @@ def write_struct(d: TextIO, node: StructNode) -> None:
         if node.iid:
             h = node.iid.hex
             iid = f'0x{h[0:8]}, 0x{h[8:12]}, 0x{h[12:16]}, [0x{h[16:18]}, 0x{h[18:20]}, 0x{h[20:22]}, 0x{h[22:24]}, 0x{h[24:26]}, 0x{h[26:28]}, 0x{h[28:30]}, 0x{h[30:32]}]'
-            d.write(f'[Guid("{node.iid}")]\n')
-            d.write('[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]\n')
+            d.write(f'[ComImport, Guid("{node.iid}")]\n')
 
-        if base and base != 'IUnknown':
-            d.write(f'public interface {node.name}: {base} {{\n')
-        else:
+        if not base or base == 'IUnknown':
+            # IUnknown
+            d.write('[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]\n')
             d.write(f'public interface {node.name}{{\n')
+        else:
+            d.write(f'public interface {node.name}: {base} {{\n')
 
         for m in node.methods:
             write_function(d, m, '    ')
