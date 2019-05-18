@@ -232,7 +232,7 @@ class CSharpGenerator:
     def generate(self, header: Header, csharp_root: pathlib.Path,
                  kit_name: str):
         package_name = f'build_{kit_name.replace(".", "_")}'
-        root = csharp_root / 'windowskits' / package_name
+        root = csharp_root / 'WindowsKits' / package_name
 
         if root.exists():
             shutil.rmtree(root)
