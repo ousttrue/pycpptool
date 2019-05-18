@@ -36,13 +36,21 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "csharp: dxgi.h",
+            "name": "csharp: d3d11.h",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/run.py",
             "args": [
                 "gen",
-                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/dxgi.h",
+                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/um/d3d11.h",
+                "-i",
+                "d3dtypes.h",
+                "-i",
+                "d3dcommon.h",
+                "-i",
+                "d3d10.h",
+                "-i",
+                "dxgi.h",
                 "-i",
                 "dxgicommon.h",
                 "-i",

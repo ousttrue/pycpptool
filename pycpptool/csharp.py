@@ -9,19 +9,26 @@ from .cindex_parser import EnumNode, TypedefNode, FunctionNode, StructNode, Head
 # https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 type_map = {
     'BYTE': 'Byte',
+    'UINT8': 'Byte',
     'INT': 'Int32',
     'BOOL': 'Int32',
     'HRESULT': 'Int32',
     'LARGE_INTEGER': 'Int64',
+    'USHORT': 'UInt16',
     'UINT': 'UInt32',
     'DWORD': 'UInt32',
     'UINT64': 'UInt64',
+    'ULONGLONG': 'UInt64',
     'FLOAT': 'Single',
     'HANDLE': 'IntPtr',
     'HMODULE': 'IntPtr',
     'HWND': 'IntPtr',
     'HMONITOR': 'IntPtr',
     'HDC': 'IntPtr',
+    'LPCSTR': 'IntPtr',
+    'LPSTR': 'IntPtr',
+    'LPVOID': 'IntPtr',
+    'LPCVOID': 'IntPtr',
     'SIZE_T': 'UIntPtr',
     'GUID': 'Guid',
     'LUID': 'Guid',
@@ -34,12 +41,17 @@ def replace_type(m):
 
 
 def cs_type(src):
+    if 'FLOAT [4]' in src:
+        return 'ref Vector4'
     return re.sub(r'\w+', replace_type, src)
 
 
 dll_map = {
     'CreateDXGIFactory': 'DXGI.dll',
     'CreateDXGIFactory1': 'DXGI.dll',
+    'D3D11CalcSubresource': 'D3D11.dll',
+    'D3D11CreateDevice': 'D3D11.dll',
+    'D3D11CreateDeviceAndSwapChain': 'D3D11.dll',
 }
 
 
@@ -258,6 +270,7 @@ class CSharpGenerator:
             d.write('''
 using System;
 using System.Runtime.InteropServices;
+using System.Numerics;
 
 ''')
 
