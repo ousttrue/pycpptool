@@ -64,17 +64,6 @@ def replace_type(m):
     return type_map.get(m[0], m[0])
 
 
-def src_type(f):
-    def inner(d: Declare, is_param, level=0):
-        ret = f(d, is_param, level)
-        if level == 0:
-            ret = f'/* {d} */{ret}'
-        return ret
-
-    return inner
-
-
-@src_type
 def cs_type(d: Declare, is_param, level=0) -> str:
     if isinstance(d, Pointer):
         if level == 0:
@@ -128,12 +117,12 @@ def cs_type(d: Declare, is_param, level=0) -> str:
                 # ByVal
                 if isinstance(d.target, Array):
                     # 多次元配列
-                    return f'[MarshalAs(UnmanagedType.ByValArray, SizeConst={d.target.length} * {d.length})]public {cs_type(d.target.target, False, level+1)}[]'
+                    return f'[MarshalAs(UnmanagedType.ByValArray, SizeConst={d.target.length} * {d.length})]', f'{cs_type(d.target.target, False, level+1)}[]'
                 else:
                     if target == 'WCHAR':
-                        return f'[MarshalAs(UnmanagedType.ByValTStr, SizeConst={d.length})]public string'
+                        return f'[MarshalAs(UnmanagedType.ByValTStr, SizeConst={d.length})]', 'string'
                     else:
-                        return f'[MarshalAs(UnmanagedType.ByValArray, SizeConst={d.length})]public {cs_type(d.target, False, level+1)}[]'
+                        return f'[MarshalAs(UnmanagedType.ByValArray, SizeConst={d.length})]', f'{cs_type(d.target, False, level+1)}[]'
         else:
             return f'{target}[{d.length}]'
 
@@ -200,29 +189,36 @@ def write_alias(d: TextIO, node: TypedefNode) -> None:
 
 def write_function(d: TextIO, m: FunctionNode, indent='', extern='') -> None:
     ret = cs_type(m.ret, False) if m.ret else 'void'
-    params = ', '.join(f'{cs_type(p.param_type, True)} {p.param_name}'
-                       for p in m.params)
+    params = [
+        f'{cs_type(p.param_type, True)} {p.param_name}' for p in m.params
+    ]
 
     if extern:
         pass
         d.write(f'[DllImport("{extern}")]\n')
-        d.write(f'{indent}public static extern {ret} {m.name}({params});\n')
+        d.write(f'{indent}public static extern {ret} {m.name}(\n')
     else:
-        d.write(f'{indent}{ret} {m.name}({params});\n')
+        d.write(f'{indent}{ret} {m.name}(\n')
+
+    for i, p in enumerate(params):
+        comma = ',' if i != len(params) - 1 else ''
+        d.write(f'{indent}    /// {m.params[i]}\n')
+        d.write(f'{indent}    {p}{comma}\n')
+    d.write(f'{indent});\n')
 
 
 ARRAY_PATTERN = re.compile(r'\s*(\w+)\s*\[\s*(\d+)\s*\]')
 
 
 def write_field(d: TextIO, f: StructNode, indent='') -> None:
-    #d.write(f'{indent}{f};\n')
-    if f.field_type == 'struct':
-        d.write(f'{f}\n')
-    elif f.field_type == 'union':
-        d.write(f'{f}\n')
+    field_type = cs_type(f.field_type, False)
+
+    d.write(f'{indent}/// {f.field_type}\n')
+    if isinstance(field_type, tuple):
+        d.write(f'{indent}{field_type[0]}\n')
+        d.write(f'{indent}public {field_type[1]} {f.name};\n')
     else:
-        field_type = cs_type(f.field_type, False)
-        d.write(f'{indent}{field_type} {f.name};\n')
+        d.write(f'{indent}public {field_type} {f.name};\n')
 
 
 def write_struct(d: TextIO, node: StructNode) -> None:
@@ -262,10 +258,12 @@ def write_struct(d: TextIO, node: StructNode) -> None:
                     for x in f.fields:
                         d.write(f'{indent2}[FieldOffset({offset})]\n')
                         write_field(d, x, indent2)
+                        d.write('\n')
                     d.write(f'{indent}#endregion\n')
                 else:
                     d.write(f'{indent}[FieldOffset({offset})]\n')
                     write_field(d, f, indent)
+                d.write('\n')
                 offset += 4
             d.write(f'}}\n')
 
@@ -277,6 +275,7 @@ def write_struct(d: TextIO, node: StructNode) -> None:
             d.write(f'public struct {node.name}{{\n')
             for f in node.fields:
                 write_field(d, f, '    ')
+                d.write('\n')
             d.write(f'}}\n')
 
 

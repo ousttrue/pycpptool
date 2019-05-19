@@ -96,7 +96,7 @@ def parse_declare(src: str) -> Declare:
         return found
 
     d = _parse_declare(src.strip())
-    print(f'{src} => {d}')
+    # print(f'{src} => {d}')
     used[src] = d
     return d
 
