@@ -3,6 +3,7 @@ import uuid
 import io
 from typing import Optional, List, NamedTuple, TextIO, Dict
 from clang import cindex
+from . import cdeclare
 
 extract_bytes_cache: Dict[pathlib.Path, bytes] = {}
 
@@ -24,7 +25,6 @@ def extract(x: cindex.Cursor) -> str:
 
 
 class Node:
-
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         self.name = c.spelling
         self.path = path
@@ -43,26 +43,24 @@ class Node:
 
 class MethodParam(NamedTuple):
     param_name: str
-    param_type: str
+    param_type: cdeclare.Declare
 
     def __str__(self) -> str:
         return f'{self.param_name}: {self.param_type}'
 
 
 class FunctionNode(Node):
-
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         super().__init__(path, c)
-        self.ret = ''
+        self.ret = cdeclare.Void()
         self.params: List[MethodParam] = []
         self.has_body = False
         for child in c.get_children():
             if child.kind == cindex.CursorKind.TYPE_REF:
-                if self.ret:
-                    raise Exception('dup ret')
-                self.ret = child.spelling
+                self.ret = cdeclare.parse_declare(child.spelling)
             elif child.kind == cindex.CursorKind.PARM_DECL:
-                param = MethodParam(child.spelling, child.type.spelling)
+                declare = cdeclare.parse_declare(child.type.spelling)
+                param = MethodParam(child.spelling, declare)
                 self.params.append(param)
             elif child.kind == cindex.CursorKind.COMPOUND_STMT:
                 # function body
@@ -104,9 +102,11 @@ class StructNode(Node):
             if child.kind == cindex.CursorKind.FIELD_DECL:
                 field = StructNode(self.path, child, False)
                 if child.type == cindex.TypeKind.TYPEDEF:
-                    field.field_type = get_typedef_type(child).spelling
+                    field_type = cdeclare.parse_declare(
+                        get_typedef_type(child).spelling)
                 else:
-                    field.field_type = child.type.spelling
+                    field_type = cdeclare.parse_declare(child.type.spelling)
+                field.field_type = field_type
                 self.fields.append(field)
             elif child.kind == cindex.CursorKind.STRUCT_DECL:
                 struct = StructNode(self.path, child)
@@ -175,8 +175,6 @@ class StructNode(Node):
 
         else:
             field_type = self.field_type
-            if field_type.startswith('struct '):
-                field_type = field_type[7:]
             f.write(f'{indent}{field_type} {self.name};')
 
 
@@ -186,7 +184,6 @@ class EnumValue(NamedTuple):
 
 
 class EnumNode(Node):
-
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         super().__init__(path, c)
         self.values: List[EnumValue] = []
@@ -230,17 +227,16 @@ def get_typedef_type(c: cindex.Cursor) -> cindex.Cursor:
 
 
 class TypedefNode(Node):
-
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         super().__init__(path, c)
         typedef_type = get_typedef_type(c)
         if typedef_type:
-            self.typedef_type = typedef_type.spelling
+            self.typedef_type = cdeclare.parse_declare(typedef_type.spelling)
         else:
             tokens = [t.spelling for t in c.get_tokens()]
             # print(tokens)
             if len(tokens) == 3:
-                self.typedef_type = tokens[1]
+                self.typedef_type = cdeclare.parse_declare(tokens[1])
                 # raise Exception()
             else:
                 self.typedef_type = None
@@ -248,9 +244,10 @@ class TypedefNode(Node):
     def is_valid(self) -> bool:
         if not self.typedef_type:
             return False
-        if self.name == self.typedef_type:
+        if self.name == self.typedef_type.type:
             return False
-        if 'struct ' + self.name == self.typedef_type:
+        if isinstance(self.typedef_type,
+                      cdeclare.BaseType) and self.typedef_type.struct:
             return False
         return True
 

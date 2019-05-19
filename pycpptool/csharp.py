@@ -5,6 +5,7 @@ import time
 import re
 from typing import TextIO, Set
 from .cindex_parser import EnumNode, TypedefNode, FunctionNode, StructNode, Header
+from .cdeclare import Declare, BaseType, Pointer, Array, Void
 
 # https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 type_map = {
@@ -35,15 +36,115 @@ type_map = {
     'IID': 'Guid',
 }
 
+struct_map = {
+    'D3D11_AUTHENTICATED_PROTECTION_FLAGS':
+    '''
+[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+struct __MIDL___MIDL_itf_d3d11_0000_0034_0001{
+    UInt32 ProtectionEnabled;
+    UInt32 OverlayOrFullscreenRequired;
+    UInt32 Reserved;
+}
+[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+public struct D3D11_AUTHENTICATED_PROTECTION_FLAGS{
+    /* (struct __MIDL___MIDL_itf_d3d11_0000_0034_0001) */__MIDL___MIDL_itf_d3d11_0000_0034_0001 Flags;
+    /* (UINT) */UInt32 Value;
+}
+'''
+}
+
+
+def is_interface(src: str) -> bool:
+    if src.isupper():
+        return False
+    return src[0] == 'I'
+
 
 def replace_type(m):
     return type_map.get(m[0], m[0])
 
 
-def cs_type(src):
-    if 'FLOAT [4]' in src:
-        return 'ref Vector4'
-    return re.sub(r'\w+', replace_type, src)
+def src_type(f):
+    def inner(d: Declare, is_param, level=0):
+        ret = f(d, is_param, level)
+        if level == 0:
+            ret = f'/* {d} */{ret}'
+        return ret
+
+    return inner
+
+
+@src_type
+def cs_type(d: Declare, is_param, level=0) -> str:
+    if isinstance(d, Pointer):
+        if level == 0:
+            if isinstance(d.target, Pointer):
+                if isinstance(d.target.target, Pointer):
+                    raise NotImplementedError('triple pointer')
+                # double pointer
+                if isinstance(d.target.target, BaseType) and is_interface(
+                        d.target.target.type):
+                    # **Interface
+                    if d.target.target.type == 'IUnknown':
+                        return 'IntPtr'
+                    else:
+                        if is_param:
+                            return f'ref {d.target.target.type}'
+                        else:
+                            # member
+                            return 'IntPtr'
+
+            elif isinstance(d.target, BaseType) and is_interface(
+                    d.target.type):
+                # *Interface
+                if d.target.type == 'IUnknown':
+                    return 'IntPtr'
+                else:
+                    return d.target.type
+
+        if isinstance(d.target, Void):
+            return 'IntPtr'
+
+        elif is_param:
+
+            target = cs_type(d.target, False, level + 1)
+            return f'ref {target}'
+
+        else:
+
+            return f'IntPtr'
+
+    elif isinstance(d, Array):
+        target = cs_type(d.target, False, level + 1)
+
+        if level == 0:
+            if is_param:
+                if level == 0 and isinstance(
+                        d.target, BaseType) and d.target.type == 'FLOAT':
+                    return 'ref Vector4'
+                # array to pointer
+                return f'{target}[]'
+            else:
+                # ByVal
+                if isinstance(d.target, Array):
+                    # 多次元配列
+                    return f'[MarshalAs(UnmanagedType.ByValArray, SizeConst={d.target.length} * {d.length})]public {cs_type(d.target.target, False, level+1)}[]'
+                else:
+                    if target == 'WCHAR':
+                        return f'[MarshalAs(UnmanagedType.ByValTStr, SizeConst={d.length})]public string'
+                    else:
+                        return f'[MarshalAs(UnmanagedType.ByValArray, SizeConst={d.length})]public {cs_type(d.target, False, level+1)}[]'
+        else:
+            return f'{target}[{d.length}]'
+
+    elif isinstance(d, Void):
+        return 'void'
+
+    elif isinstance(d, BaseType):
+        return type_map.get(d.type, d.type)
+
+    else:
+        raise RuntimeError('arienai')
 
 
 dll_map = {
@@ -91,69 +192,15 @@ def write_alias(d: TextIO, node: TypedefNode) -> None:
         d.write('    public IntPtr Value;\n')
         d.write('}\n')
     else:
-        typedef_type = node.typedef_type
-        if typedef_type.startswith('struct '):
-            typedef_type = typedef_type[7:]
-        typedef_type = cs_type(typedef_type)
+        typedef_type = cs_type(node.typedef_type, False)
         d.write(f'public struct {node.name}{{\n')
         d.write(f'    public {typedef_type} Value;\n')
         d.write('}\n')
 
 
-def reduce_asta(m):
-    return m[0][1:]
-
-
-def before_after(f):
-    def inner(before):
-        after = f(before)
-        # if 'IUnknown' in before:
-        #     print(f'{before} => {after}')
-        return after
-
-    return inner
-
-
-@before_after
-def to_cs(param_type: str) -> str:
-    '''
-    c type to cs type
-    '''
-    param_type = cs_type(param_type)
-    param_type = param_type.replace('&', '*').replace('const', '').strip()
-    if param_type[0] == 'I':  # is_instance
-        param_type = re.sub(r'\*+', reduce_asta,
-                            param_type).strip()  # reduce *
-
-    count = param_type.count('*')
-    if count == 0:
-        if param_type == 'IUnknown':
-            param_type = '/* IUnknown* */IntPtr'
-
-    elif count == 1:
-        if 'void' in param_type:
-            ref = 'IntPtr'
-        else:
-            ref = 'ref ' + param_type.replace('*', '').strip()
-            if ref == 'ref IUnknown':
-                ref = '/* IUnknown** */ref IntPtr'
-        #print(f'{param_type} => "{ref}"')
-        param_type = ref
-
-    elif count == 2:
-        if 'void' in param_type:
-            ref = 'ref IntPtr'
-        else:
-            ref = 'ref IntPtr'
-        #print(f'{param_type} => "{ref}"')
-        param_type = ref
-
-    return param_type
-
-
 def write_function(d: TextIO, m: FunctionNode, indent='', extern='') -> None:
-    ret = cs_type(m.ret) if m.ret else 'void'
-    params = ', '.join(f'{to_cs(p.param_type)} {p.param_name}'
+    ret = cs_type(m.ret, False) if m.ret else 'void'
+    params = ', '.join(f'{cs_type(p.param_type, True)} {p.param_name}'
                        for p in m.params)
 
     if extern:
@@ -169,31 +216,13 @@ ARRAY_PATTERN = re.compile(r'\s*(\w+)\s*\[\s*(\d+)\s*\]')
 
 def write_field(d: TextIO, f: StructNode, indent='') -> None:
     #d.write(f'{indent}{f};\n')
-    field_type = cs_type(f.field_type)
-    if field_type.startswith('struct '):
-        field_type = field_type[7:]
-
-    if '*' in field_type:
-        field_type = f'/* {field_type} */IntPtr'
-
-    m = ARRAY_PATTERN.match(field_type)
-    if m:
-        # some[size]; sized array
-        if m.group(1) == 'WCHAR':
-            d.write(
-                f'{indent}[MarshalAs(UnmanagedType.ByValTStr, SizeConst={int(m.group(2))})]\n'
-            )
-            field_type = f'string'
-        else:
-            d.write(
-                f'{indent}[MarshalAs(UnmanagedType.ByValArray, SizeConst={int(m.group(2))})]\n'
-            )
-            field_type = f'{m.group(1)}[]'
-        d.write(f'{indent}public {field_type} {f.name};\n')
-
+    if f.field_type == 'struct':
+        d.write(f'{f}\n')
+    elif f.field_type == 'union':
+        d.write(f'{f}\n')
     else:
-        # other
-        d.write(f'{indent}public {field_type} {f.name};\n')
+        field_type = cs_type(f.field_type, False)
+        d.write(f'{indent}{field_type} {f.name};\n')
 
 
 def write_struct(d: TextIO, node: StructNode) -> None:
@@ -217,12 +246,38 @@ def write_struct(d: TextIO, node: StructNode) -> None:
             write_function(d, m, '    ')
         d.write(f'}}\n')
     else:
-        d.write(
-            '[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]\n')
-        d.write(f'public struct {node.name}{{\n')
-        for f in node.fields:
-            write_field(d, f, '    ')
-        d.write(f'}}\n')
+
+        if any(x.field_type == 'union' for x in node.fields):
+            # include union
+            d.write(
+                '[StructLayout(LayoutKind.Explicit, CharSet = CharSet.Unicode)]\n'
+            )
+            d.write(f'public struct {node.name}{{\n')
+            offset = 0
+            indent = '    '
+            indent2 = indent + '    '
+            for f in node.fields:
+                if f.field_type == 'union':
+                    d.write(f'{indent}#region union\n')
+                    for x in f.fields:
+                        d.write(f'{indent2}[FieldOffset({offset})]\n')
+                        write_field(d, x, indent2)
+                    d.write(f'{indent}#endregion\n')
+                else:
+                    d.write(f'{indent}[FieldOffset({offset})]\n')
+                    write_field(d, f, indent)
+                offset += 4
+            d.write(f'}}\n')
+
+        else:
+
+            d.write(
+                '[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]\n'
+            )
+            d.write(f'public struct {node.name}{{\n')
+            for f in node.fields:
+                write_field(d, f, '    ')
+            d.write(f'}}\n')
 
 
 @contextlib.contextmanager
@@ -291,7 +346,14 @@ using System.Numerics;
                             continue
                         if node.name[0] == 'C':  # class
                             continue
-                        write_struct(d, node)
+
+                        snippet = struct_map.get(node.name)
+                        if snippet:
+                            # replace
+                            d.write(snippet)
+                        else:
+                            write_struct(d, node)
+
                         d.write('\n')
                     elif isinstance(node, FunctionNode):
                         functions.append(node)
