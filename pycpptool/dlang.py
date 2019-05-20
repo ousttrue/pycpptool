@@ -147,8 +147,11 @@ class DlangGenerator:
     def __init__(self) -> None:
         self.used: Set[str] = set()
 
-    def generate_header(self, header: Header, root: pathlib.Path,
-                        package_name: str, skip: bool):
+    def generate_header(self,
+                        header: Header,
+                        root: pathlib.Path,
+                        package_name: str,
+                        skip=False):
 
         module_name = header.name[:-2]
 

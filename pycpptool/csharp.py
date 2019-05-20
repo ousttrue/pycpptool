@@ -41,13 +41,13 @@ type_map = {
 struct_map = {
     'D3D11_AUTHENTICATED_PROTECTION_FLAGS':
     '''
-[StructLayout(LayoutKind.Sequential, Pack=4, CharSet=CharSet.Unicode)]
+[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
 struct __MIDL___MIDL_itf_d3d11_0000_0034_0001{
     UInt32 ProtectionEnabled;
     UInt32 OverlayOrFullscreenRequired;
     UInt32 Reserved;
 }
-[StructLayout(LayoutKind.Sequential, Pack=4, CharSet=CharSet.Unicode)]
+[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
 public struct D3D11_AUTHENTICATED_PROTECTION_FLAGS{
     /* (struct __MIDL___MIDL_itf_d3d11_0000_0034_0001) */__MIDL___MIDL_itf_d3d11_0000_0034_0001 Flags;
     /* (UINT) */UInt32 Value;
@@ -115,7 +115,7 @@ func_map = {
 }
 
 types = '''
-[StructLayout(LayoutKind.Sequential, Pack=4, CharSet=CharSet.Unicode)]
+[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
 struct SECURITY_ATTRIBUTES {
     DWORD nLength;
     LPVOID lpSecurityDescriptor;
@@ -245,9 +245,7 @@ def write_enum(d: TextIO, node: EnumNode) -> None:
 
 
 def write_alias(d: TextIO, node: TypedefNode) -> None:
-    d.write(
-        '[StructLayout(LayoutKind.Sequential, Pack=4, CharSet=CharSet.Unicode)]\n'
-    )
+    d.write('[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]\n')
     if node.name.startswith('PFN_'):
         # function pointer workaround
         d.write(f'public struct {node.name}{{\n')
@@ -342,7 +340,7 @@ def write_struct(d: TextIO, node: StructNode) -> None:
         else:
 
             d.write(
-                '[StructLayout(LayoutKind.Sequential, Pack=4, CharSet=CharSet.Unicode)]\n'
+                '[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]\n'
             )
             d.write(f'public struct {node.name}{{\n')
             for f in node.fields:

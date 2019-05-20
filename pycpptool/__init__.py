@@ -6,7 +6,7 @@ import pathlib
 import logging
 from typing import List, Optional, Set, TextIO
 from clang import cindex
-from . import csharp, dlang, cindex_parser
+from . import struct_alignment, csharp, dlang, cindex_parser
 logger = logging.getLogger(__name__)
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -84,6 +84,7 @@ def main() -> None:
     generators = {
         'csharp': csharp.generate,
         'dlang': dlang.generate,
+        'struct': struct_alignment.generate,
     }
 
     sub_gen.add_argument('-g',
@@ -118,7 +119,7 @@ def main() -> None:
 
             path = pathlib.Path(tmp_name)
         else:
-            path = (HERE / args.entrypoint[0]).resolve()
+            path = pathlib.Path(args.entrypoint[0]).resolve()
             kit_name = path.parent.parent.name
         include.append(path.name)
 
@@ -144,13 +145,12 @@ def main() -> None:
                 include)
 
             logger.debug('generate...')
-            generator = generators.get(arge.generator)
+            generator = generators.get(args.generator)
             if not generator:
                 raise RuntimeError(f'no such genrator: {args.generator}')
 
-            dlang_root = pathlib.Path(str(args.outfolder)).resolve()
-
-            generator(headers[path], csharp_root, kit_name, multi_header)
+            root = pathlib.Path(str(args.outfolder)).resolve()
+            generator(headers[path], root, kit_name, multi_header)
 
         else:
             raise Exception()

@@ -16,23 +16,17 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "struct_offset: dxgi.h",
+            "name": "struct",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/run.py",
             "args": [
                 "gen",
-                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/shared/dxgi.h",
-                "-i",
-                "dxgicommon.h",
-                "-i",
-                "dxgiformat.h",
-                "-i",
-                "dxgitype.h",
-                "-o",
-                "../windowskits/source",
+                "sample_offset.h",
                 "-g",
-                "struct"
+                "struct",
+                "-o",
+                "../pycpptool_struct",
             ],
             "console": "integratedTerminal"
         },
@@ -51,7 +45,7 @@
                 "-i",
                 "dxgitype.h",
                 "-o",
-                "../windowskits/source",
+                "../pycpptool_dlang/source",
                 "-g",
                 "dlang"
             ],
@@ -81,7 +75,7 @@
                 "-i",
                 "dxgitype.h",
                 "-o",
-                "../windowskits/source",
+                "../pycpptool_csharp/source",
                 "-g",
                 "csharp"
             ],
@@ -145,7 +139,7 @@
                 "-i",
                 "dxgitype.h",
                 "-o",
-                "../windowskits/source",
+                "../pycpptool_dlang/source",
                 "-g",
                 "dlang"
             ],

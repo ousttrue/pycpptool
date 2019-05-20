@@ -95,11 +95,18 @@ class StructNode(Node):
         self.base = ''
         self.methods: List[FunctionNode] = []
         if is_root:
+            self.t = c.type
+            print(f'{c.spelling}: {self.t.get_align()}, {self.t.get_size()}')
+            #a = t.get_align()
+            #s = t.get_size()
             self._parse(c)
 
     def _parse(self, c: cindex.Cursor) -> None:
         for child in c.get_children():
             if child.kind == cindex.CursorKind.FIELD_DECL:
+                print(
+                    f'{child.spelling}: {int(self.t.get_offset(child.spelling)/8)}'
+                )
                 field = StructNode(self.path, child, False)
                 if child.type == cindex.TypeKind.TYPEDEF:
                     field_type = cdeclare.parse_declare(

@@ -6,7 +6,6 @@ from typing import NamedTuple, TextIO, Set, Optional, List, Dict
 from clang import cindex
 from .cindex_node import *
 
-
 # helper {{{
 DEFAULT_CLANG_DLL = pathlib.Path("C:/Program Files/LLVM/bin/libclang.dll")
 SET_DLL = False
@@ -181,7 +180,7 @@ def parse(tu: cindex.TranslationUnit, include: List[str]) -> Dict[str, Header]:
         traverse(c)
 
     # modify
-    for k, v in used.items():
+    for _, v in used.items():
         if v.canonical and v.canonical in used:
             # mark forward declaration
             used[v.canonical].is_forward = True
