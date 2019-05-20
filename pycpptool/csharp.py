@@ -75,11 +75,11 @@ func_map = {
         /// SDKVersion: (UINT)
         UInt32 SDKVersion,
         /// ppDevice: (*(*(ID3D11Device)))
-        ref ID3D11Device ppDevice,
+        ref IntPtr ppDevice,
         /// pFeatureLevel: (*(D3D_FEATURE_LEVEL))
         ref D3D_FEATURE_LEVEL pFeatureLevel,
         /// ppImmediateContext: (*(*(ID3D11DeviceContext)))
-        ref ID3D11DeviceContext ppImmediateContext
+        ref IntPtr ppImmediateContext
     );
     ''',
     'D3D11CreateDeviceAndSwapChain':
@@ -103,13 +103,13 @@ func_map = {
         /// pSwapChainDesc: (*(const DXGI_SWAP_CHAIN_DESC))
         ref DXGI_SWAP_CHAIN_DESC pSwapChainDesc,
         /// ppSwapChain: (*(*(IDXGISwapChain)))
-        ref IDXGISwapChain ppSwapChain,
+        ref IntPtr ppSwapChain,
         /// ppDevice: (*(*(ID3D11Device)))
-        ref ID3D11Device ppDevice,
+        ref IntPtr ppDevice,
         /// pFeatureLevel: (*(D3D_FEATURE_LEVEL))
         ref D3D_FEATURE_LEVEL pFeatureLevel,
         /// ppImmediateContext: (*(*(ID3D11DeviceContext)))
-        ref ID3D11DeviceContext ppImmediateContext
+        ref IntPtr ppImmediateContext
     );
     ''',
 }
@@ -127,7 +127,9 @@ struct SECURITY_ATTRIBUTES {
 def is_interface(src: str) -> bool:
     if src.isupper():
         return False
-    return src[0] == 'I'
+    if src == 'IntPtr':
+        return False
+    return src.startswith('I')
 
 
 def replace_type(m):
@@ -138,26 +140,26 @@ def cs_type(d: Declare, is_param, level=0) -> str:
     if isinstance(d, Pointer):
         if level == 0:
             if isinstance(d.target, Pointer):
+                # double pointer
                 if isinstance(d.target.target, Pointer):
                     raise NotImplementedError('triple pointer')
+                else:
+                    if is_param:
+                        return 'ref IntPtr'
+                    else:
+                        return 'IntPtr'
 
         if isinstance(d.target, Void):
             return 'IntPtr'
 
-        elif is_param:
-
-            target = cs_type(d.target, False, level + 1)
-            if target == 'IUnknown':
-                return 'IntPtr'
-            if target[0] == 'I' and target != 'IntPtr' and not target.isupper(
-            ):
-                return 'IntPtr'
-
-            return f'ref {target}'
-
-        else:
-
+        if not is_param:
             return f'IntPtr'
+
+        target = cs_type(d.target, False, level + 1)
+        if is_interface(target):
+            return 'IntPtr'
+
+        return f'ref {target}'
 
     elif isinstance(d, Array):
         target = cs_type(d.target, False, level + 1)
