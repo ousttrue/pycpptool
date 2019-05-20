@@ -53,6 +53,65 @@ public struct D3D11_AUTHENTICATED_PROTECTION_FLAGS{
 '''
 }
 
+func_map = {
+    'D3D11CreateDevice':
+    '''
+    [DllImport("D3D11.dll")]
+    public static extern Int32 D3D11CreateDevice(
+        /// pAdapter: (*(IDXGIAdapter))
+        IDXGIAdapter pAdapter,
+        /// DriverType: (D3D_DRIVER_TYPE)
+        D3D_DRIVER_TYPE DriverType,
+        /// Software: (HMODULE)
+        IntPtr Software,
+        /// Flags: (UINT)
+        UInt32 Flags,
+        /// pFeatureLevels: (*(const D3D_FEATURE_LEVEL))
+        D3D_FEATURE_LEVEL[] pFeatureLevels,
+        /// FeatureLevels: (UINT)
+        UInt32 FeatureLevels,
+        /// SDKVersion: (UINT)
+        UInt32 SDKVersion,
+        /// ppDevice: (*(*(ID3D11Device)))
+        ref ID3D11Device ppDevice,
+        /// pFeatureLevel: (*(D3D_FEATURE_LEVEL))
+        ref D3D_FEATURE_LEVEL pFeatureLevel,
+        /// ppImmediateContext: (*(*(ID3D11DeviceContext)))
+        ref ID3D11DeviceContext ppImmediateContext
+    );
+    ''',
+    'D3D11CreateDeviceAndSwapChain':
+    '''
+    [DllImport("D3D11.dll")]
+    public static extern Int32 D3D11CreateDeviceAndSwapChain(
+        /// pAdapter: (*(IDXGIAdapter))
+        IDXGIAdapter pAdapter,
+        /// DriverType: (D3D_DRIVER_TYPE)
+        D3D_DRIVER_TYPE DriverType,
+        /// Software: (HMODULE)
+        IntPtr Software,
+        /// Flags: (UINT)
+        UInt32 Flags,
+        /// pFeatureLevels: (*(const D3D_FEATURE_LEVEL))
+        D3D_FEATURE_LEVEL[] pFeatureLevels,
+        /// FeatureLevels: (UINT)
+        UInt32 FeatureLevels,
+        /// SDKVersion: (UINT)
+        UInt32 SDKVersion,
+        /// pSwapChainDesc: (*(const DXGI_SWAP_CHAIN_DESC))
+        ref DXGI_SWAP_CHAIN_DESC pSwapChainDesc,
+        /// ppSwapChain: (*(*(IDXGISwapChain)))
+        ref IDXGISwapChain ppSwapChain,
+        /// ppDevice: (*(*(ID3D11Device)))
+        ref ID3D11Device ppDevice,
+        /// pFeatureLevel: (*(D3D_FEATURE_LEVEL))
+        ref D3D_FEATURE_LEVEL pFeatureLevel,
+        /// ppImmediateContext: (*(*(ID3D11DeviceContext)))
+        ref ID3D11DeviceContext ppImmediateContext
+    );
+    ''',
+}
+
 
 def is_interface(src: str) -> bool:
     if src.isupper():
@@ -264,7 +323,7 @@ def write_struct(d: TextIO, node: StructNode) -> None:
                     d.write(f'{indent}[FieldOffset({offset})]\n')
                     write_field(d, f, indent)
                 d.write('\n')
-                offset += 4
+                offset += 8
             d.write(f'}}\n')
 
         else:
@@ -331,7 +390,6 @@ using System.Numerics;
             with namespace(d, f'{root.parent.name}.{root.name}'):
 
                 functions = []
-
                 for node in header.nodes:
 
                     if isinstance(node, EnumNode):
@@ -359,8 +417,17 @@ using System.Numerics;
 
                 if functions:
                     d.write(f'public static class {module_name}{{\n')
+                    for m in header.macro_defnitions:
+                        d.write(
+                            f'public const int {m.name} = unchecked((int){m.value});\n'
+                        )
                     for f in functions:
-                        write_function(d, f, '', dll_map.get(f.name))
+                        func = func_map.get(f.name)
+                        if func:
+                            # replace
+                            d.write(func)
+                        else:
+                            write_function(d, f, '', dll_map.get(f.name))
                         d.write('\n')
                     d.write('}\n')
 
