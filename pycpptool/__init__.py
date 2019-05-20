@@ -97,7 +97,9 @@ def main() -> None:
 
         kit_name = ''
         include_path_list: List[str] = []
-        if len(args.entrypoint) > 1:
+
+        multi_header = len(args.entrypoint) > 1
+        if multi_header:
             fd, tmp_name = tempfile.mkstemp(prefix='tmpheader_', suffix='.h')
             os.close(fd)
             with open(tmp_name, 'w', encoding='utf-8') as f:
@@ -142,9 +144,9 @@ def main() -> None:
                 gen.generate(headers[path], dlang_root, kit_name)
 
             elif args.generator == 'csharp':
-                gen = csharp.CSharpGenerator()
                 csharp_root = pathlib.Path(str(args.outfolder)).resolve()
-                gen.generate(headers[path], csharp_root, kit_name)
+                csharp.generate(headers[path], csharp_root, kit_name,
+                                multi_header)
 
         else:
             raise Exception()

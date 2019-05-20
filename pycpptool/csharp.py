@@ -26,8 +26,10 @@ type_map = {
     'HWND': 'IntPtr',
     'HMONITOR': 'IntPtr',
     'HDC': 'IntPtr',
-    'LPCSTR': 'IntPtr',
     'LPSTR': 'IntPtr',
+    'LPCSTR': 'IntPtr',
+    'LPWSTR': 'IntPtr',
+    'LPCWSTR': 'IntPtr',
     'LPVOID': 'IntPtr',
     'LPCVOID': 'IntPtr',
     'SIZE_T': 'UIntPtr',
@@ -39,13 +41,13 @@ type_map = {
 struct_map = {
     'D3D11_AUTHENTICATED_PROTECTION_FLAGS':
     '''
-[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+[StructLayout(LayoutKind.Sequential, Pack=4, CharSet=CharSet.Unicode)]
 struct __MIDL___MIDL_itf_d3d11_0000_0034_0001{
     UInt32 ProtectionEnabled;
     UInt32 OverlayOrFullscreenRequired;
     UInt32 Reserved;
 }
-[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+[StructLayout(LayoutKind.Sequential, Pack=4, CharSet=CharSet.Unicode)]
 public struct D3D11_AUTHENTICATED_PROTECTION_FLAGS{
     /* (struct __MIDL___MIDL_itf_d3d11_0000_0034_0001) */__MIDL___MIDL_itf_d3d11_0000_0034_0001 Flags;
     /* (UINT) */UInt32 Value;
@@ -111,6 +113,15 @@ func_map = {
     );
     ''',
 }
+
+types = '''
+[StructLayout(LayoutKind.Sequential, Pack=4, CharSet=CharSet.Unicode)]
+struct SECURITY_ATTRIBUTES {
+    DWORD nLength;
+    LPVOID lpSecurityDescriptor;
+    BOOL bInheritHandle;
+}
+'''
 
 
 def is_interface(src: str) -> bool:
@@ -234,6 +245,9 @@ def write_enum(d: TextIO, node: EnumNode) -> None:
 
 
 def write_alias(d: TextIO, node: TypedefNode) -> None:
+    d.write(
+        '[StructLayout(LayoutKind.Sequential, Pack=4, CharSet=CharSet.Unicode)]\n'
+    )
     if node.name.startswith('PFN_'):
         # function pointer workaround
         d.write(f'public struct {node.name}{{\n')
@@ -259,10 +273,11 @@ def write_function(d: TextIO, m: FunctionNode, indent='', extern='') -> None:
     else:
         d.write(f'{indent}{ret} {m.name}(\n')
 
+    indent2 = indent + '    '
     for i, p in enumerate(params):
         comma = ',' if i != len(params) - 1 else ''
-        d.write(f'{indent}    /// {m.params[i]}\n')
-        d.write(f'{indent}    {p}{comma}\n')
+        d.write(f'{indent2}/// {m.params[i]}\n')
+        d.write(f'{indent2}{p}{comma}\n')
     d.write(f'{indent});\n')
 
 
@@ -286,8 +301,6 @@ def write_struct(d: TextIO, node: StructNode) -> None:
         base = node.base
 
         if node.iid:
-            h = node.iid.hex
-            iid = f'0x{h[0:8]}, 0x{h[8:12]}, 0x{h[12:16]}, [0x{h[16:18]}, 0x{h[18:20]}, 0x{h[20:22]}, 0x{h[22:24]}, 0x{h[24:26]}, 0x{h[26:28]}, 0x{h[28:30]}, 0x{h[30:32]}]'
             d.write(f'[ComImport, Guid("{node.iid}")]\n')
 
         if not base or base == 'IUnknown':
@@ -323,13 +336,13 @@ def write_struct(d: TextIO, node: StructNode) -> None:
                     d.write(f'{indent}[FieldOffset({offset})]\n')
                     write_field(d, f, indent)
                 d.write('\n')
-                offset += 8
+                offset += 4
             d.write(f'}}\n')
 
         else:
 
             d.write(
-                '[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]\n'
+                '[StructLayout(LayoutKind.Sequential, Pack=4, CharSet=CharSet.Unicode)]\n'
             )
             d.write(f'public struct {node.name}{{\n')
             for f in node.fields:
@@ -350,86 +363,93 @@ def namespace(d, name):
         d.write('}\n')
 
 
+def generate(header: Header, csharp_root: pathlib.Path, kit_name: str,
+             multi_header: bool):
+    package_name = f'build_{kit_name.replace(".", "_")}'
+    root = csharp_root / 'WindowsKits' / package_name
+
+    if root.exists():
+        shutil.rmtree(root)
+        time.sleep(0.1)
+    root.mkdir(parents=True, exist_ok=True)
+
+    gen = CSharpGenerator()
+    gen.generate_header(header, root, package_name, multi_header)
+
+
 class CSharpGenerator:
     def __init__(self):
         self.used: Set[str] = set()
 
-    def generate(self, header: Header, csharp_root: pathlib.Path,
-                 kit_name: str):
-        package_name = f'build_{kit_name.replace(".", "_")}'
-        root = csharp_root / 'WindowsKits' / package_name
-
-        if root.exists():
-            shutil.rmtree(root)
-            time.sleep(0.1)
-        root.mkdir(parents=True, exist_ok=True)
-
-        self._generate_header(header, root, package_name)
-
-    def _generate_header(self, header: Header, root: pathlib.Path,
-                         package_name: str):
+    def generate_header(self,
+                        header: Header,
+                        root: pathlib.Path,
+                        package_name: str,
+                        skip=False):
 
         module_name = header.name[:-2]
-
         if module_name in self.used:
             return
         self.used.add(module_name)
-
         dst = root / f'{module_name}.cs'
         print(dst)
 
-        with dst.open('w') as d:
+        if not skip:
+            with dst.open('w') as d:
 
-            d.write('''
-using System;
-using System.Runtime.InteropServices;
-using System.Numerics;
+                d.write('''
+    using System;
+    using System.Runtime.InteropServices;
+    using System.Numerics;
 
-''')
+    ''')
 
-            with namespace(d, f'{root.parent.name}.{root.name}'):
-
-                functions = []
-                for node in header.nodes:
-
-                    if isinstance(node, EnumNode):
-                        write_enum(d, node)
-                        d.write('\n')
-                    elif isinstance(node, TypedefNode):
-                        write_alias(d, node)
-                        d.write('\n')
-                    elif isinstance(node, StructNode):
-                        if node.is_forward:
-                            continue
-                        if node.name[0] == 'C':  # class
-                            continue
-
-                        snippet = struct_map.get(node.name)
-                        if snippet:
-                            # replace
-                            d.write(snippet)
-                        else:
-                            write_struct(d, node)
-
-                        d.write('\n')
-                    elif isinstance(node, FunctionNode):
-                        functions.append(node)
-
-                if functions:
-                    d.write(f'public static class {module_name}{{\n')
-                    for m in header.macro_defnitions:
-                        d.write(
-                            f'public const int {m.name} = unchecked((int){m.value});\n'
-                        )
-                    for f in functions:
-                        func = func_map.get(f.name)
-                        if func:
-                            # replace
-                            d.write(func)
-                        else:
-                            write_function(d, f, '', dll_map.get(f.name))
-                        d.write('\n')
-                    d.write('}\n')
+                with namespace(d, f'{root.parent.name}.{root.name}'):
+                    self._generate_header_body(header, module_name, d)
 
         for include in header.includes:
-            self._generate_header(include, root, package_name)
+            self.generate_header(include, root, package_name)
+
+    def _generate_header_body(self, header: Header, module_name: str,
+                              d: TextIO) -> None:
+        functions = []
+        for node in header.nodes:
+
+            if isinstance(node, EnumNode):
+                write_enum(d, node)
+                d.write('\n')
+            elif isinstance(node, TypedefNode):
+                write_alias(d, node)
+                d.write('\n')
+            elif isinstance(node, StructNode):
+                if node.is_forward:
+                    continue
+                if node.name[0] == 'C':  # class
+                    continue
+
+                snippet = struct_map.get(node.name)
+                if snippet:
+                    # replace
+                    d.write(snippet)
+                else:
+                    write_struct(d, node)
+
+                d.write('\n')
+            elif isinstance(node, FunctionNode):
+                functions.append(node)
+
+        if functions:
+            d.write(f'public static class {module_name}{{\n')
+            for m in header.macro_defnitions:
+                d.write(
+                    f'public const int {m.name} = unchecked((int){m.value});\n'
+                )
+            for f in functions:
+                func = func_map.get(f.name)
+                if func:
+                    # replace
+                    d.write(func)
+                else:
+                    write_function(d, f, '', dll_map.get(f.name))
+                d.write('\n')
+            d.write('}\n')
