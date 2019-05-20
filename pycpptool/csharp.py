@@ -140,26 +140,6 @@ def cs_type(d: Declare, is_param, level=0) -> str:
             if isinstance(d.target, Pointer):
                 if isinstance(d.target.target, Pointer):
                     raise NotImplementedError('triple pointer')
-                # double pointer
-                if isinstance(d.target.target, BaseType) and is_interface(
-                        d.target.target.type):
-                    # **Interface
-                    if d.target.target.type == 'IUnknown':
-                        return 'IntPtr'
-                    else:
-                        if is_param:
-                            return f'ref {d.target.target.type}'
-                        else:
-                            # member
-                            return 'IntPtr'
-
-            elif isinstance(d.target, BaseType) and is_interface(
-                    d.target.type):
-                # *Interface
-                if d.target.type == 'IUnknown':
-                    return 'IntPtr'
-                else:
-                    return d.target.type
 
         if isinstance(d.target, Void):
             return 'IntPtr'
@@ -167,6 +147,12 @@ def cs_type(d: Declare, is_param, level=0) -> str:
         elif is_param:
 
             target = cs_type(d.target, False, level + 1)
+            if target == 'IUnknown':
+                return 'IntPtr'
+            if target[0] == 'I' and target != 'IntPtr' and not target.isupper(
+            ):
+                return 'IntPtr'
+
             return f'ref {target}'
 
         else:
@@ -258,25 +244,55 @@ def write_alias(d: TextIO, node: TypedefNode) -> None:
         d.write('}\n')
 
 
-def write_function(d: TextIO, m: FunctionNode, indent='', extern='') -> None:
+def type_with_name(p):
+    return f'{cs_type(p.param_type, True)} {p.param_name}'
+
+
+def ref_with_name(p):
+    cs = cs_type(p.param_type, True)
+    if cs.startswith('ref '):
+        return 'ref ' + p.param_name
+    else:
+        return p.param_name
+
+
+def write_function(d: TextIO, m: FunctionNode, indent='', extern='',
+                   index=-1) -> None:
     ret = cs_type(m.ret, False) if m.ret else 'void'
-    params = [
-        f'{cs_type(p.param_type, True)} {p.param_name}' for p in m.params
-    ]
+    params = [(cs_type(p.param_type, True), p.param_name) for p in m.params]
 
     if extern:
-        pass
         d.write(f'[DllImport("{extern}")]\n')
         d.write(f'{indent}public static extern {ret} {m.name}(\n')
     else:
-        d.write(f'{indent}{ret} {m.name}(\n')
+        # for com interface
+        d.write(f'{indent}public {ret} {m.name}(\n')
 
+    # params
     indent2 = indent + '    '
-    for i, p in enumerate(params):
-        comma = ',' if i != len(params) - 1 else ''
-        d.write(f'{indent2}/// {m.params[i]}\n')
-        d.write(f'{indent2}{p}{comma}\n')
-    d.write(f'{indent});\n')
+    is_first = True
+    for p in m.params:
+        if is_first:
+            is_first = False
+            comma = ''
+        else:
+            comma = ', '
+        d.write(f'{indent2}/// {p}\n')
+        d.write(f'{indent2}{comma}{type_with_name(p)}\n')
+    d.write(f'{indent})')
+
+    if extern:
+        d.write(';\n')
+    else:
+        # function body extends IUnknownImpl
+        d.write('\n')
+        d.write(f'''{indent}{{
+{indent2}var fp = GetFunctionPointer({index});
+{indent2}var callback = ({m.name}Func)Marshal.GetDelegateForFunctionPointer(fp, typeof({m.name}Func));
+{indent2}{'return ' if ret!='void' else ''}callback(Self{''.join(', ' + ref_with_name(p) for p in m.params)});
+{indent}}}
+{indent}delegate {ret} {m.name}Func(IntPtr self{''.join(', ' + type_with_name(p) for p in m.params)});
+''')
 
 
 ARRAY_PATTERN = re.compile(r'\s*(\w+)\s*\[\s*(\d+)\s*\]')
@@ -298,18 +314,20 @@ def write_struct(d: TextIO, node: StructNode) -> None:
         # com interface
         base = node.base
 
-        if node.iid:
-            d.write(f'[ComImport, Guid("{node.iid}")]\n')
-
         if not base or base == 'IUnknown':
             # IUnknown
-            d.write('[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]\n')
-            d.write(f'public interface {node.name}{{\n')
+            d.write(f'public class {node.name} : IUnknownImpl{{\n')
         else:
-            d.write(f'public interface {node.name}: {base} {{\n')
+            d.write(f'public class {node.name}: {base} {{\n')
 
-        for m in node.methods:
-            write_function(d, m, '    ')
+        d.write(f'''
+    static /*readonly*/ Guid s_uuid = new Guid("{node.iid}");
+    public override ref /*readonly*/ Guid IID => ref s_uuid;
+    static int MethodCount => {len(node.methods)};
+''')
+
+        for i, m in enumerate(node.methods):
+            write_function(d, m, '    ', index=i)
         d.write(f'}}\n')
     else:
 
@@ -448,6 +466,6 @@ class CSharpGenerator:
                     # replace
                     d.write(func)
                 else:
-                    write_function(d, f, '', dll_map.get(f.name))
+                    write_function(d, f, '', extern=dll_map.get(f.name))
                 d.write('\n')
             d.write('}\n')
