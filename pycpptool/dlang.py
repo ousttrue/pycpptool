@@ -106,7 +106,8 @@ def to_d(param_type: str) -> str:
 
 def dlang_function(d: TextIO, m: FunctionNode, indent='') -> None:
     ret = m.ret if m.ret else 'void'
-    params = ', '.join(f'{to_d(p.param_type)} {p.param_name}' for p in m.params)
+    params = ', '.join(f'{to_d(p.param_type)} {p.param_name}'
+                       for p in m.params)
     d.write(f'{indent}{ret} {m.name}({params});\n')
 
 
@@ -128,25 +129,26 @@ def dlang_struct(d: TextIO, node: StructNode) -> None:
         d.write(f'{node}\n')
 
 
-class DlangGenerator:
+def generate(header: Header, dlang_root: pathlib.Path, kit_name: str,
+             multi_header: bool) -> None:
+    package_name = f'build_{kit_name.replace(".", "_")}'
+    root = dlang_root / 'windowskits' / package_name
 
+    if root.exists():
+        shutil.rmtree(root)
+        time.sleep(0.1)
+    root.mkdir(parents=True, exist_ok=True)
+
+    gen = DlangGenerator()
+    gen.generate_header(header, root, package_name, multi_header)
+
+
+class DlangGenerator:
     def __init__(self) -> None:
         self.used: Set[str] = set()
 
-    def generate(self, header: Header, dlang_root: pathlib.Path,
-                 kit_name: str) -> None:
-        package_name = f'build_{kit_name.replace(".", "_")}'
-        root = dlang_root / 'windowskits' / package_name
-
-        if root.exists():
-            shutil.rmtree(root)
-            time.sleep(0.1)
-        root.mkdir(parents=True, exist_ok=True)
-
-        self._generate_header(header, root, package_name)
-
-    def _generate_header(self, header: Header, root: pathlib.Path,
-                         package_name: str):
+    def generate_header(self, header: Header, root: pathlib.Path,
+                        package_name: str, skip: bool):
 
         module_name = header.name[:-2]
 
@@ -206,7 +208,7 @@ class DlangGenerator:
             d.write(TAIL)
 
         for include in header.includes:
-            self._generate_header(include, root, package_name)
+            self.generate_header(include, root, package_name)
 
 
 # }}}

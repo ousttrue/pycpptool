@@ -80,10 +80,16 @@ def main() -> None:
     sub_gen.add_argument('entrypoint', help='parse target', nargs='+')
     sub_gen.add_argument('-o', '--outfolder', required=True)
     sub_gen.add_argument('-i', '--include', action='append')
+
+    generators = {
+        'csharp': csharp.generate,
+        'dlang': dlang.generate,
+    }
+
     sub_gen.add_argument('-g',
                          '--generator',
                          help='code generator',
-                         choices=['dlang', 'csharp'],
+                         choices=generators.keys(),
                          required=True)
 
     # execute
@@ -138,15 +144,13 @@ def main() -> None:
                 include)
 
             logger.debug('generate...')
-            if args.generator == 'dlang':
-                gen = dlang.DlangGenerator()
-                dlang_root = pathlib.Path(str(args.outfolder)).resolve()
-                gen.generate(headers[path], dlang_root, kit_name)
+            generator = generators.get(arge.generator)
+            if not generator:
+                raise RuntimeError(f'no such genrator: {args.generator}')
 
-            elif args.generator == 'csharp':
-                csharp_root = pathlib.Path(str(args.outfolder)).resolve()
-                csharp.generate(headers[path], csharp_root, kit_name,
-                                multi_header)
+            dlang_root = pathlib.Path(str(args.outfolder)).resolve()
+
+            generator(headers[path], csharp_root, kit_name, multi_header)
 
         else:
             raise Exception()
