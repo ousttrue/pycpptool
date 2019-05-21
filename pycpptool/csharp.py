@@ -69,7 +69,7 @@ func_map = {
         /// Flags: (UINT)
         UInt32 Flags,
         /// pFeatureLevels: (*(const D3D_FEATURE_LEVEL))
-        D3D_FEATURE_LEVEL[] pFeatureLevels,
+        ref D3D_FEATURE_LEVEL pFeatureLevels,
         /// FeatureLevels: (UINT)
         UInt32 FeatureLevels,
         /// SDKVersion: (UINT)
@@ -95,7 +95,7 @@ func_map = {
         /// Flags: (UINT)
         UInt32 Flags,
         /// pFeatureLevels: (*(const D3D_FEATURE_LEVEL))
-        D3D_FEATURE_LEVEL[] pFeatureLevels,
+        ref D3D_FEATURE_LEVEL pFeatureLevels,
         /// FeatureLevels: (UINT)
         UInt32 FeatureLevels,
         /// SDKVersion: (UINT)
@@ -170,7 +170,9 @@ def cs_type(d: Declare, is_param, level=0) -> str:
                         d.target, BaseType) and d.target.type == 'FLOAT':
                     return 'ref Vector4'
                 # array to pointer
-                return f'{target}[]'
+                #return f'{target}[]'
+                # for Span<T>
+                return f'ref {target}'
             else:
                 # ByVal
                 if isinstance(d.target, Array):
