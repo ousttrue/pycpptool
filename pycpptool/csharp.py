@@ -9,6 +9,7 @@ from .cdeclare import Declare, BaseType, Pointer, Array, Void
 
 # https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 type_map = {
+    'WCHAR': 'Char',
     'BYTE': 'Byte',
     'UINT8': 'Byte',
     'INT': 'Int32',
@@ -17,6 +18,7 @@ type_map = {
     'LARGE_INTEGER': 'Int64',
     'USHORT': 'UInt16',
     'UINT': 'UInt32',
+    'UINT32': 'UInt32',
     'DWORD': 'UInt32',
     'UINT64': 'UInt64',
     'ULONGLONG': 'UInt64',
@@ -36,6 +38,14 @@ type_map = {
     'GUID': 'Guid',
     'LUID': 'Guid',
     'IID': 'Guid',
+    'D2D1_COLOR_F': 'D2D_COLOR_F',
+    'D2D1_POINT_2F': 'D2D_POINT_2F',
+    'D2D1_POINT_2U': 'D2D_POINT_2U',
+    'D2D1_SIZE_F': 'D2D_SIZE_F',
+    'D2D1_RECT_F': 'D2D_RECT_F',
+    'D2D1_RECT_U': 'D2D_RECT_U',
+    'D2D1_MATRIX_3X2_F': 'D2D_MATRIX_3X2_F',
+    'D2D1_SIZE_U': 'D2D_SIZE_U',
 }
 
 struct_map = {
@@ -51,6 +61,132 @@ struct __MIDL___MIDL_itf_d3d11_0000_0034_0001{
 public struct D3D11_AUTHENTICATED_PROTECTION_FLAGS{
     /* (struct __MIDL___MIDL_itf_d3d11_0000_0034_0001) */__MIDL___MIDL_itf_d3d11_0000_0034_0001 Flags;
     /* (UINT) */UInt32 Value;
+}
+''',
+    'D2D_MATRIX_3X2_F':
+    '''
+[StructLayout(LayoutKind.Explicit, CharSet = CharSet.Unicode)]
+public struct D2D_MATRIX_3X2_F {
+  #region union
+    [FieldOffset(0)]
+    public Single m11;
+    [FieldOffset(4)]
+    public Single m12;
+    [FieldOffset(8)]
+    public Single m21;
+    [FieldOffset(12)]
+    public Single m22;
+    [FieldOffset(16)]
+    public Single dx;
+    [FieldOffset(20)]
+    public Single dy;
+
+    [FieldOffset(0)]
+    public Single _11;
+    [FieldOffset(4)]
+    public Single _12;
+    [FieldOffset(8)]
+    public Single _21;
+    [FieldOffset(12)]
+    public Single _22;
+    [FieldOffset(16)]
+    public Single _31;
+    [FieldOffset(20)]
+    public Single _32;
+
+    [FieldOffset(0)]
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst=3)]
+    public Single[] m;
+  #endregion
+}
+''',
+    'D2D_MATRIX_4X3_F':
+    '''
+[StructLayout(LayoutKind.Explicit, CharSet = CharSet.Unicode)]
+public struct D2D_MATRIX_4X3_F {
+  #region union
+    [FieldOffset(0)]
+    public Single _11;
+    [FieldOffset(4)]
+    public Single _12;
+    [FieldOffset(8)]
+    public Single _13;
+    [FieldOffset(12)]
+    public Single _21;
+    [FieldOffset(16)]
+    public Single _22;
+    [FieldOffset(20)]
+    public Single _23;
+    [FieldOffset(24)]
+    public Single _31;
+    [FieldOffset(28)]
+    public Single _32;
+    [FieldOffset(32)]
+    public Single _33;
+    [FieldOffset(36)]
+    public Single _41;
+    [FieldOffset(40)]
+    public Single _42;
+    [FieldOffset(44)]
+    public Single _43;
+
+    [FieldOffset(0)]
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst=4)]
+    public Single[] m;
+  #endregion
+}
+''',
+    'D2D_MATRIX_4X4_F':
+    '''
+[StructLayout(LayoutKind.Explicit, CharSet = CharSet.Unicode)]
+public struct D2D_MATRIX_4X4_F {
+  #region union
+    [FieldOffset(0)]
+    public Single _11;
+    [FieldOffset(4)]
+    public Single _12;
+    [FieldOffset(8)]
+    public Single _13;
+    [FieldOffset(12)]
+    public Single _14;
+    [FieldOffset(16)]
+    public Single _21;
+    [FieldOffset(20)]
+    public Single _22;
+    [FieldOffset(24)]
+    public Single _23;
+    [FieldOffset(28)]
+    public Single _24;
+    [FieldOffset(32)]
+    public Single _31;
+    [FieldOffset(36)]
+    public Single _32;
+    [FieldOffset(40)]
+    public Single _33;
+    [FieldOffset(44)]
+    public Single _34;
+    [FieldOffset(48)]
+    public Single _41;
+    [FieldOffset(52)]
+    public Single _42;
+    [FieldOffset(56)]
+    public Single _43;
+    [FieldOffset(60)]
+    public Single _44;
+
+    [FieldOffset(0)]
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst=4)]
+    public Single[] m;
+  #endregion
+}
+''',
+    'D2D_MATRIX_5X4_F':
+    '''
+[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+public struct D2D_MATRIX_5X4_F
+{
+    [MarshalAs(UnmanagedType.ByValArray, SizeConst=20)]
+    public Single[] m;
 }
 '''
 }
@@ -116,10 +252,10 @@ func_map = {
 
 types = '''
 [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
-struct SECURITY_ATTRIBUTES {
-    DWORD nLength;
-    LPVOID lpSecurityDescriptor;
-    BOOL bInheritHandle;
+public struct SECURITY_ATTRIBUTES {
+    public UInt32 nLength;
+    public IntPtr lpSecurityDescriptor;
+    public Int32 bInheritHandle;
 }
 '''
 
@@ -193,15 +329,15 @@ def cs_type(d: Declare, is_param, level=0) -> str:
         return type_map.get(d.type, d.type)
 
     else:
-        raise RuntimeError('arienai')
+        print(d)
+        #raise RuntimeError('arienai')
+        return str(d)
 
 
 dll_map = {
-    'CreateDXGIFactory': 'DXGI.dll',
-    'CreateDXGIFactory1': 'DXGI.dll',
-    'D3D11CalcSubresource': 'D3D11.dll',
-    'D3D11CreateDevice': 'D3D11.dll',
-    'D3D11CreateDeviceAndSwapChain': 'D3D11.dll',
+    'dxgi.h': 'DXGI.dll',
+    'd3d11.h': 'D3D11.dll',
+    'd2d1.h': 'D2D1.dll',
 }
 
 
@@ -235,29 +371,44 @@ def write_enum(d: TextIO, node: EnumNode) -> None:
 
 
 def write_alias(d: TextIO, node: TypedefNode) -> None:
-    d.write('[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]\n')
     if node.name.startswith('PFN_'):
         # function pointer workaround
+        d.write(
+            '[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]\n')
         d.write(f'public struct {node.name}{{\n')
         d.write('    public IntPtr Value;\n')
         d.write('}\n')
     else:
         typedef_type = cs_type(node.typedef_type, False)
+        if node.name == typedef_type:
+            return
+        if node.name.startswith('D2D1_') and typedef_type.startswith(
+                'D2D_') and node.name[5:] == typedef_type[4:]:
+            return
+        d.write(
+            '[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]\n')
         d.write(f'public struct {node.name}{{\n')
         d.write(f'    public {typedef_type} Value;\n')
         d.write('}\n')
 
 
+def name_filter(src) -> str:
+    if src == 'string':
+        return 'str'
+    return src
+
+
 def type_with_name(p):
-    return f'{cs_type(p.param_type, True)} {p.param_name}'
+    return f'{cs_type(p.param_type, True)} {name_filter(p.param_name)}'
 
 
 def ref_with_name(p):
     cs = cs_type(p.param_type, True)
+    name = name_filter(p.param_name)
     if cs.startswith('ref '):
-        return 'ref ' + p.param_name
+        return 'ref ' + name
     else:
-        return p.param_name
+        return name
 
 
 def write_function(d: TextIO, m: FunctionNode, indent='', extern='',
@@ -464,12 +615,13 @@ class CSharpGenerator:
                 d.write(
                     f'public const int {m.name} = unchecked((int){m.value});\n'
                 )
+            dll = dll_map.get(header.name)
             for f in functions:
                 func = func_map.get(f.name)
                 if func:
                     # replace
                     d.write(func)
                 else:
-                    write_function(d, f, '', extern=dll_map.get(f.name))
+                    write_function(d, f, '', extern=dll)
                 d.write('\n')
             d.write('}\n')
