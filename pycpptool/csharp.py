@@ -14,7 +14,6 @@ type_map = {
     'UINT8': 'Byte',
     'INT': 'Int32',
     'BOOL': 'Int32',
-    'HRESULT': 'Int32',
     'LARGE_INTEGER': 'Int64',
     'USHORT': 'UInt16',
     'UINT': 'UInt32',
@@ -99,10 +98,6 @@ public struct D2D_MATRIX_3X2_F {
     public Single _31;
     [FieldOffset(20)]
     public Single _32;
-
-    [FieldOffset(0)]
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst=3)]
-    public Single[] m;
   #endregion
 }
 ''',
@@ -135,10 +130,6 @@ public struct D2D_MATRIX_4X3_F {
     public Single _42;
     [FieldOffset(44)]
     public Single _43;
-
-    [FieldOffset(0)]
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst=4)]
-    public Single[] m;
   #endregion
 }
 ''',
@@ -179,10 +170,6 @@ public struct D2D_MATRIX_4X4_F {
     public Single _43;
     [FieldOffset(60)]
     public Single _44;
-
-    [FieldOffset(0)]
-    [MarshalAs(UnmanagedType.ByValArray, SizeConst=4)]
-    public Single[] m;
   #endregion
 }
 ''',
@@ -201,7 +188,7 @@ func_map = {
     'D3D11CreateDevice':
     '''
     [DllImport("D3D11.dll")]
-    public static extern Int32 D3D11CreateDevice(
+    public static extern HRESULT D3D11CreateDevice(
         /// pAdapter: (*(IDXGIAdapter))
         IDXGIAdapter pAdapter,
         /// DriverType: (D3D_DRIVER_TYPE)
@@ -227,7 +214,7 @@ func_map = {
     'D3D11CreateDeviceAndSwapChain':
     '''
     [DllImport("D3D11.dll")]
-    public static extern Int32 D3D11CreateDeviceAndSwapChain(
+    public static extern HRESULT D3D11CreateDeviceAndSwapChain(
         /// pAdapter: (*(IDXGIAdapter))
         IDXGIAdapter pAdapter,
         /// DriverType: (D3D_DRIVER_TYPE)
@@ -321,7 +308,7 @@ def cs_type(d: Declare, is_param, level=0) -> str:
                     # 多次元配列
                     return f'[MarshalAs(UnmanagedType.ByValArray, SizeConst={d.target.length} * {d.length})]', f'{cs_type(d.target.target, False, level+1)}[]'
                 else:
-                    if target == 'WCHAR':
+                    if target in ['WCHAR', 'Char']:
                         return f'[MarshalAs(UnmanagedType.ByValTStr, SizeConst={d.length})]', 'string'
                     else:
                         return f'[MarshalAs(UnmanagedType.ByValArray, SizeConst={d.length})]', f'{cs_type(d.target, False, level+1)}[]'
