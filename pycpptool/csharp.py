@@ -439,7 +439,7 @@ def write_function(d: TextIO, m: FunctionNode, indent='', extern='',
     if extern:
         d.write(';\n')
     else:
-        # function body extends IUnknownImpl
+        # function body extends ComPtr(IUnknown represent)
         d.write('\n')
         d.write(f'''{indent}{{
 {indent2}var fp = GetFunctionPointer(VTableIndexBase + {index});
@@ -471,7 +471,7 @@ def write_struct(d: TextIO, node: StructNode) -> None:
 
         if not base or base == 'IUnknown':
             # IUnknown
-            d.write(f'public class {node.name} : IUnknownImpl{{\n')
+            d.write(f'public class {node.name} : ComPtr{{\n')
         else:
             d.write(f'public class {node.name}: {base} {{\n')
 
