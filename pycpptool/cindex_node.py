@@ -96,7 +96,7 @@ class StructNode(Node):
         self.methods: List[FunctionNode] = []
         if is_root:
             self.t = c.type
-            print(f'{c.spelling}: {self.t.get_align()}, {self.t.get_size()}')
+            #print(f'{c.spelling}: {self.t.get_align()}, {self.t.get_size()}')
             #a = t.get_align()
             #s = t.get_size()
             self._parse(c)
@@ -104,9 +104,9 @@ class StructNode(Node):
     def _parse(self, c: cindex.Cursor) -> None:
         for child in c.get_children():
             if child.kind == cindex.CursorKind.FIELD_DECL:
-                print(
-                    f'{child.spelling}: {int(self.t.get_offset(child.spelling)/8)}'
-                )
+                # print(
+                #     f'{child.spelling}: {int(self.t.get_offset(child.spelling)/8)}'
+                # )
                 field = StructNode(self.path, child, False)
                 if child.type == cindex.TypeKind.TYPEDEF:
                     field_type = cdeclare.parse_declare(
@@ -190,6 +190,20 @@ class EnumValue(NamedTuple):
     value: int
 
 
+def get_common_start(l, r):
+    i = 0
+    for i, (ll, rr) in enumerate(zip(l, r)):
+        if ll != rr:
+            break
+        i += 1
+
+    ret = l[0:i]
+    if ret[-1] == '_':
+        ret = ret[0:-1]
+    #print(ret)
+    return ret
+
+
 class EnumNode(Node):
     def __init__(self, path: pathlib.Path, c: cindex.Cursor) -> None:
         super().__init__(path, c)
@@ -199,6 +213,12 @@ class EnumNode(Node):
                 self.values.append(EnumValue(child.spelling, child.enum_value))
             else:
                 raise Exception(child.kind)
+        if not self.name:
+            name = self.values[0].name
+            for v in self.values[1:]:
+                name = get_common_start(name, v.name)
+            print(name)
+            self.name = name
 
     def __str__(self) -> str:
         with io.StringIO() as f:

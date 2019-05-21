@@ -442,7 +442,7 @@ def write_function(d: TextIO, m: FunctionNode, indent='', extern='',
         # function body extends IUnknownImpl
         d.write('\n')
         d.write(f'''{indent}{{
-{indent2}var fp = GetFunctionPointer({index});
+{indent2}var fp = GetFunctionPointer(VTableIndexBase + {index});
 {indent2}var callback = ({m.name}Func)Marshal.GetDelegateForFunctionPointer(fp, typeof({m.name}Func));
 {indent2}{'return ' if ret!='void' else ''}callback(Self{''.join(', ' + ref_with_name(p) for p in m.params)});
 {indent}}}
@@ -479,6 +479,7 @@ def write_struct(d: TextIO, node: StructNode) -> None:
     static /*readonly*/ Guid s_uuid = new Guid("{node.iid}");
     public override ref /*readonly*/ Guid IID => ref s_uuid;
     static int MethodCount => {len(node.methods)};
+    int VTableIndexBase => VTableIndexBase<{node.name}>.Value;
 ''')
 
         for i, m in enumerate(node.methods):
@@ -596,6 +597,9 @@ class CSharpGenerator:
                 if node.is_forward:
                     continue
                 if node.name[0] == 'C':  # class
+                    continue
+                if header.name == 'dcommon.h' and node.name == 'IDXGISurface':
+                    # skip
                     continue
 
                 snippet = struct_map.get(node.name)
