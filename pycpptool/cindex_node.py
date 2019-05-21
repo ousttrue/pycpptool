@@ -150,6 +150,10 @@ class StructNode(Node):
                 pass
             elif child.kind == cindex.CursorKind.CXX_ACCESS_SPEC_DECL:
                 pass
+            elif child.kind == cindex.CursorKind.FUNCTION_TEMPLATE:
+                pass
+            elif child.kind == cindex.CursorKind.USING_DECLARATION:
+                pass
             else:
                 raise Exception(child.kind)
 

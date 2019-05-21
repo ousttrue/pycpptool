@@ -31,6 +31,8 @@ type_map = {
     'LPSTR': 'IntPtr',
     'LPCSTR': 'IntPtr',
     'LPWSTR': 'IntPtr',
+    'PWSTR': 'IntPtr',
+    'PCWSTR': 'IntPtr',
     'LPCWSTR': 'IntPtr',
     'LPVOID': 'IntPtr',
     'LPCVOID': 'IntPtr',
@@ -38,13 +40,17 @@ type_map = {
     'GUID': 'Guid',
     'LUID': 'Guid',
     'IID': 'Guid',
-    'D2D1_COLOR_F': 'D2D_COLOR_F',
+    'CLSID': 'Guid',
+    'PD2D1_EFFECT_FACTORY': 'IntPtr',
+    #'D2D1_COLOR_F': 'D2D_COLOR_F',
+    'D2D1_COLOR_F': 'Vector4',
     'D2D1_POINT_2F': 'D2D_POINT_2F',
     'D2D1_POINT_2U': 'D2D_POINT_2U',
     'D2D1_SIZE_F': 'D2D_SIZE_F',
     'D2D1_RECT_F': 'D2D_RECT_F',
     'D2D1_RECT_U': 'D2D_RECT_U',
     'D2D1_MATRIX_3X2_F': 'D2D_MATRIX_3X2_F',
+    'D2D1_MATRIX_4X4_F': 'D2D_MATRIX_4X4_F',
     'D2D1_SIZE_U': 'D2D_SIZE_U',
 }
 
@@ -338,7 +344,15 @@ dll_map = {
     'dxgi.h': 'DXGI.dll',
     'd3d11.h': 'D3D11.dll',
     'd2d1.h': 'D2D1.dll',
+    'd2d1_1.h': 'D2D1.dll',
 }
+
+
+def write_const(d: TextIO, m) -> None:
+    value = m.value
+    if value == 'UINT_MAX':
+        value = 'UInt32.MaxValue'
+    d.write(f'public const int {m.name} = unchecked((int){value});\n')
 
 
 def write_enum(d: TextIO, node: EnumNode) -> None:
@@ -616,11 +630,15 @@ class CSharpGenerator:
         if functions:
             d.write(f'public static class {module_name}{{\n')
             for m in header.macro_defnitions:
-                d.write(
-                    f'public const int {m.name} = unchecked((int){m.value});\n'
-                )
+                write_const(d, m)
             dll = dll_map.get(header.name)
+
+            used_function = set()
             for f in functions:
+                if f.name in used_function:
+                    continue
+                used_function.add(f.name)
+
                 func = func_map.get(f.name)
                 if func:
                     # replace
