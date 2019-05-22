@@ -40,6 +40,8 @@ class BaseType(Declare):
             # inner declaration
             self.type = src
             self.struct = splitted[0]
+        elif splitted[0] == 'enum':
+            self.type = splitted[1]
         else:
             count = len(splitted)
             if count == 1:

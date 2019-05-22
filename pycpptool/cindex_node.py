@@ -127,10 +127,13 @@ class StructNode(Node):
                 value = extract(child)
                 d3d11_key = 'MIDL_INTERFACE("'
                 d2d1_key = 'DX_DECLARE_INTERFACE("'
+                dwrite_key = 'DWRITE_DECLARE_INTERFACE("'
                 if value.startswith(d3d11_key):
                     self.iid = uuid.UUID(value[len(d3d11_key):-2])
                 elif value.startswith(d2d1_key):
                     self.iid = uuid.UUID(value[len(d2d1_key):-2])
+                elif value.startswith(dwrite_key):
+                    self.iid = uuid.UUID(value[len(dwrite_key):-2])
                 else:
                     print(value)
             elif child.kind == cindex.CursorKind.CXX_BASE_SPECIFIER:

@@ -3,24 +3,28 @@ import contextlib
 import shutil
 import time
 import re
-from typing import TextIO, Set
+from typing import TextIO, Set, Dict
 from .cindex_parser import EnumNode, TypedefNode, FunctionNode, StructNode, Header
 from .cdeclare import Declare, BaseType, Pointer, Array, Void
 
 # https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 type_map = {
     'WCHAR': 'Char',
+    'INT16': 'Int16',
     'INT': 'Int32',
+    'INT32': 'Int32',
     'BOOL': 'Int32',
     'LARGE_INTEGER': 'Int64',
     'BYTE': 'Byte',
     'UINT8': 'Byte',
     'USHORT': 'UInt16',
+    'UINT16': 'UInt16',
     'UINT': 'UInt32',
     'ULONG': 'UInt32',
     'UINT32': 'UInt32',
     'UINT64': 'UInt64',
     'DWORD': 'UInt32',
+    'COLORREF': 'UInt32',
     'UINT64': 'UInt64',
     'ULONGLONG': 'UInt64',
     'ULARGE_INTEGER': 'UInt64',
@@ -335,6 +339,7 @@ dll_map = {
     'd3d11.h': 'D3D11.dll',
     'd2d1.h': 'D2D1.dll',
     'd2d1_1.h': 'D2D1.dll',
+    'dwrite.h': 'Dwrite.dll',
 }
 
 
@@ -461,11 +466,15 @@ def write_field(d: TextIO, f: StructNode, indent='') -> None:
     field_type = cs_type(f.field_type, False)
 
     d.write(f'{indent}/// {f.field_type}\n')
+    name = f.name
+    if name == 'string':
+        name = 'str'
+
     if isinstance(field_type, tuple):
         d.write(f'{indent}{field_type[0]}\n')
-        d.write(f'{indent}public {field_type[1]} {f.name};\n')
+        d.write(f'{indent}public {field_type[1]} {name};\n')
     else:
-        d.write(f'{indent}public {field_type} {f.name};\n')
+        d.write(f'{indent}public {field_type} {name};\n')
 
 
 def write_struct(d: TextIO, node: StructNode) -> None:
@@ -557,6 +566,8 @@ def generate(header: Header, csharp_root: pathlib.Path, kit_name: str,
 class CSharpGenerator:
     def __init__(self):
         self.used: Set[str] = set()
+        # 前方宣言の判定
+        self.name_count: Dict[str, int] = {}
 
     def generate_header(self,
                         header: Header,
@@ -565,6 +576,31 @@ class CSharpGenerator:
                         package_name: str,
                         skip=False):
 
+        self._prepare(header)
+
+        self._gen(header, root, namespace, package_name, skip)
+
+    def _prepare(self, header):
+        '''
+        前方宣言判定のために同名のStructNode数を数える
+        1より大きいものは len(methos)==0 で前方宣言とみなす
+        '''
+        for node in header.nodes:
+            if isinstance(node, StructNode):
+                if node.name in self.name_count:
+                    self.name_count[node.name] += 1
+                else:
+                    self.name_count[node.name] = 1
+
+        for include in header.includes:
+            self._prepare(include)
+
+    def _gen(self,
+             header: Header,
+             root: pathlib.Path,
+             namespace: str,
+             package_name: str,
+             skip=False):
         module_name = header.name[:-2]
         if module_name in self.used:
             return
@@ -588,7 +624,7 @@ class CSharpGenerator:
                     self._generate_header_body(header, module_name, d)
 
         for include in header.includes:
-            self.generate_header(include, root, namespace, package_name)
+            self._gen(include, root, namespace, package_name)
 
     def _generate_header_body(self, header: Header, module_name: str,
                               d: TextIO) -> None:
@@ -606,9 +642,15 @@ class CSharpGenerator:
                     continue
                 if node.name[0] == 'C':  # class
                     continue
-                if header.name == 'dcommon.h' and node.name == 'IDXGISurface':
-                    # skip
+                if is_interface(
+                        node.name) and self.name_count[node.name] > 1 and len(
+                            node.methods) == 0:
+                    print(f'forward decl: {node.name}')
+                    # maybe foward declaration
                     continue
+                # if header.name == 'dcommon.h' and node.name == 'IDXGISurface':
+                #     # skip
+                #     continue
 
                 snippet = struct_map.get(node.name)
                 if snippet:
