@@ -528,7 +528,7 @@ def write_struct(d: TextIO, node: StructNode) -> None:
 
 
 @contextlib.contextmanager
-def namespace(d, name):
+def namespace_context(d, name):
     # Code to acquire resource, e.g.:
     d.write(f'namespace {name} {{\n')
     d.write('\n')
@@ -540,7 +540,7 @@ def namespace(d, name):
 
 
 def generate(header: Header, csharp_root: pathlib.Path, kit_name: str,
-             multi_header: bool):
+             namespace: str, multi_header: bool):
     package_name = f'build_{kit_name.replace(".", "_")}'
     root = csharp_root / 'WindowsKits' / package_name
 
@@ -550,7 +550,8 @@ def generate(header: Header, csharp_root: pathlib.Path, kit_name: str,
     root.mkdir(parents=True, exist_ok=True)
 
     gen = CSharpGenerator()
-    gen.generate_header(header, root, package_name, multi_header)
+    gen.generate_header(header, root, f'{namespace}.' if namespace else '',
+                        package_name, multi_header)
 
 
 class CSharpGenerator:
@@ -560,6 +561,7 @@ class CSharpGenerator:
     def generate_header(self,
                         header: Header,
                         root: pathlib.Path,
+                        namespace: str,
                         package_name: str,
                         skip=False):
 
@@ -580,11 +582,13 @@ class CSharpGenerator:
 
     ''')
 
-                with namespace(d, f'{root.parent.name}.{root.name}'):
+                # ComPtrCS.WidnowsKits.build_xxx
+                with namespace_context(
+                        d, f'{namespace}{root.parent.name}.{root.name}'):
                     self._generate_header_body(header, module_name, d)
 
         for include in header.includes:
-            self.generate_header(include, root, package_name)
+            self.generate_header(include, root, namespace, package_name)
 
     def _generate_header_body(self, header: Header, module_name: str,
                               d: TextIO) -> None:

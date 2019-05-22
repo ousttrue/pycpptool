@@ -80,6 +80,7 @@ def main() -> None:
     sub_gen.add_argument('entrypoint', help='parse target', nargs='+')
     sub_gen.add_argument('-o', '--outfolder', required=True)
     sub_gen.add_argument('-i', '--include', action='append')
+    sub_gen.add_argument('-n', '--namespace')
 
     generators = {
         'csharp': csharp.generate,
@@ -150,7 +151,8 @@ def main() -> None:
                 raise RuntimeError(f'no such genrator: {args.generator}')
 
             root = pathlib.Path(str(args.outfolder)).resolve()
-            generator(headers[path], root, kit_name, multi_header)
+            generator(headers[path], root, kit_name, args.namespace,
+                      multi_header)
 
         else:
             raise Exception()
