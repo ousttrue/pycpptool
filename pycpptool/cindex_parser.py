@@ -108,7 +108,8 @@ def get_node(current: pathlib.Path, c: cindex.Cursor) -> Optional[Node]:
             return None
         try:
             return FunctionNode(current, c)
-        except:
+        except Exception as ex:
+            print(ex)
             return None
     if c.kind == cindex.CursorKind.TYPEDEF_DECL:
         node = TypedefNode(current, c)
@@ -162,10 +163,8 @@ def parse(tu: cindex.TranslationUnit, include: List[str]) -> Dict[str, Header]:
             return
 
         if c.kind == cindex.CursorKind.UNEXPOSED_DECL:
-            tokens = [t for t in c.get_tokens()]
-            if tokens and tokens[0].spelling == 'extern':
-                for child in c.get_children():
-                    traverse(child)
+            for child in c.get_children():
+                traverse(child)
             return
 
         node = get_node(current, c)

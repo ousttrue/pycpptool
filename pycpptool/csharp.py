@@ -345,6 +345,8 @@ dll_map = {
 
 def write_const(d: TextIO, m) -> None:
     value = m.value
+    if '__declspec' in value:
+        return
     if value == 'UINT_MAX':
         value = 'UInt32.MaxValue'
     d.write(f'public const int {m.name} = unchecked((int){value});\n')
@@ -642,9 +644,8 @@ class CSharpGenerator:
                     continue
                 if node.name[0] == 'C':  # class
                     continue
-                if is_interface(
-                        node.name) and self.name_count[node.name] > 1 and len(
-                            node.methods) == 0:
+                if self.name_count[node.name] > 1 and len(
+                        node.methods) == 0 and len(node.fields) == 0:
                     print(f'forward decl: {node.name}')
                     # maybe foward declaration
                     continue

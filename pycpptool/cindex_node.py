@@ -70,6 +70,8 @@ class FunctionNode(Node):
                 # print(tokens)
                 # raise(Exception(child.kind))
                 pass
+            elif child.kind == cindex.CursorKind.DLLIMPORT_ATTR:
+                pass
             else:
                 raise (Exception(child.kind))
 

@@ -3,15 +3,14 @@
     // 既存の属性の説明をホバーして表示します。
     // 詳細情報は次を確認してください: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "Python: sample.h",
+    "configurations": [{
+            "name": "parse",
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/run.py",
             "args": [
                 "parse",
-                "sample.h",
+                "C:/Program Files (x86)/Windows Kits/10/Include/10.0.17763.0/um/dwrite.h",
             ],
             "console": "integratedTerminal"
         },

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 HERE = pathlib.Path(__file__).resolve().parent
 
 
-def show(f: TextIO, path: pathlib.Path, tu: cindex.TranslationUnit) -> None:
+def show(f: TextIO, tu: cindex.TranslationUnit, path: pathlib.Path) -> None:
 
     used: Set[int] = set()
 
@@ -126,7 +126,8 @@ def main() -> None:
 
         if args.action == 'debug':
             tu = cindex_parser.get_tu(path, include_path_list)
-            show(sys.stdout, tu, include_path_list)
+            show(sys.stdout, tu, path)
+
         elif args.action == 'parse':
             headers = cindex_parser.parse(
                 cindex_parser.get_tu(path, include_path_list), include)
@@ -134,6 +135,7 @@ def main() -> None:
                 headers, cindex_parser.get_tu(path, include_path_list, True),
                 include)
             headers[path].print_nodes()
+
         elif args.action == 'gen':
             logger.debug('parse...')
             headers = cindex_parser.parse(
