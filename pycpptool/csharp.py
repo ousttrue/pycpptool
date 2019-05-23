@@ -644,8 +644,8 @@ class CSharpGenerator:
                     continue
                 if node.name[0] == 'C':  # class
                     continue
-                if self.name_count[node.name] > 1 and len(
-                        node.methods) == 0 and len(node.fields) == 0:
+                if (self.name_count[node.name] > 1 and len(node.methods) == 0
+                        and not node.base and len(node.fields) == 0):
                     print(f'forward decl: {node.name}')
                     # maybe foward declaration
                     continue
