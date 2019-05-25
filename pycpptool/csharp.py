@@ -64,6 +64,8 @@ type_map = {
     'D2D1_MATRIX_3X2_F': 'D2D_MATRIX_3X2_F',
     'D2D1_MATRIX_4X4_F': 'D2D_MATRIX_4X4_F',
     'D2D1_SIZE_U': 'D2D_SIZE_U',
+    'D3D11_PRIMITIVE_TOPOLOGY': 'D3D_PRIMITIVE_TOPOLOGY',
+    'D3D11_SRV_DIMENSION': 'D3D_SRV_DIMENSION',
     'ID3DBlob': 'ID3D10Blob',
     'LPD3DBLOB': 'ID3D10Blob',
     'LPD3DINCLUDE': 'ID3DInclude',
@@ -417,6 +419,9 @@ def write_alias(d: TextIO, node: TypedefNode) -> None:
             return
         if node.name.startswith('D2D1_') and typedef_type.startswith(
                 'D2D_') and node.name[5:] == typedef_type[4:]:
+            return
+        if node.name.startswith('D3D11_') and typedef_type.startswith(
+                'D3D_') and node.name[6:] == typedef_type[4:]:
             return
         if node.name in type_map.keys():
             return
