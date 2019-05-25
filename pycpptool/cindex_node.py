@@ -96,11 +96,11 @@ class StructNode(Node):
         self.iid: Optional[uuid.UUID] = None
         self.base = ''
         self.methods: List[FunctionNode] = []
+        self.align = 0
+        self.size = 0
         if is_root:
-            self.t = c.type
-            #print(f'{c.spelling}: {self.t.get_align()}, {self.t.get_size()}')
-            #a = t.get_align()
-            #s = t.get_size()
+            self.align = c.type.get_align()
+            self.size = c.type.get_size()
             self._parse(c)
 
     def _parse(self, c: cindex.Cursor) -> None:

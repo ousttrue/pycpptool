@@ -7,6 +7,12 @@ from typing import TextIO, Set, Dict
 from .cindex_parser import EnumNode, TypedefNode, FunctionNode, StructNode, Header
 from .cdeclare import Declare, BaseType, Pointer, Array, Void
 
+USING = '''
+using System;
+using System.Runtime.InteropServices;
+using System.Numerics;
+'''
+
 # https://docs.microsoft.com/en-us/windows/desktop/winprog/windows-data-types
 type_map = {
     'WCHAR': 'Char',
@@ -484,6 +490,8 @@ def write_struct(d: TextIO, node: StructNode) -> None:
         # com interface
         base = node.base
 
+        if node.methods:
+            d.write(f'[Annotation(MethodCount={len(node.methods)})]\n')
         if not base or base == 'IUnknown':
             # IUnknown
             d.write(f'public class {node.name} : ComPtr{{\n')
@@ -493,7 +501,10 @@ def write_struct(d: TextIO, node: StructNode) -> None:
         d.write(f'''
     static /*readonly*/ Guid s_uuid = new Guid("{node.iid}");
     public override ref /*readonly*/ Guid IID => ref s_uuid;
-    static int MethodCount => {len(node.methods)};
+''')
+        # static int MethodCount => {len(node.methods)};
+        if node.methods:
+            d.write(f'''
     int VTableIndexBase => VTableIndexBase<{node.name}>.Value;
 ''')
 
@@ -504,6 +515,7 @@ def write_struct(d: TextIO, node: StructNode) -> None:
 
         if any(x.field_type == 'union' for x in node.fields):
             # include union
+            d.write(f'[Annotation(Size={node.size})]\n')
             d.write(
                 '[StructLayout(LayoutKind.Explicit, CharSet = CharSet.Unicode)]\n'
             )
@@ -528,6 +540,7 @@ def write_struct(d: TextIO, node: StructNode) -> None:
 
         else:
 
+            d.write(f'[Annotation(Size={node.size})]\n')
             d.write(
                 '[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]\n'
             )
@@ -541,6 +554,8 @@ def write_struct(d: TextIO, node: StructNode) -> None:
 @contextlib.contextmanager
 def namespace_context(d, name):
     # Code to acquire resource, e.g.:
+    d.write(USING)
+    d.write('\n')
     d.write(f'namespace {name} {{\n')
     d.write('\n')
     try:
@@ -613,29 +628,30 @@ class CSharpGenerator:
         if not skip:
             with dst.open('w') as d:
 
-                d.write('''
-    using System;
-    using System.Runtime.InteropServices;
-    using System.Numerics;
-
-    ''')
-
                 # ComPtrCS.WidnowsKits.build_xxx
                 with namespace_context(
                         d, f'{namespace}{root.parent.name}.{root.name}'):
-                    self._generate_header_body(header, module_name, d)
+                    self._generate_header_body(
+                        header, module_name, d, dst,
+                        f'{namespace}{root.parent.name}.{root.name}')
 
         for include in header.includes:
             self._gen(include, root, namespace, package_name)
 
     def _generate_header_body(self, header: Header, module_name: str,
-                              d: TextIO) -> None:
+                              d: TextIO, dst: pathlib.Path,
+                              namespace: str) -> None:
         functions = []
         for node in header.nodes:
 
             if isinstance(node, EnumNode):
-                write_enum(d, node)
-                d.write('\n')
+                # separate file
+                with (dst.parent / f'{node.name}.cs').open(
+                        "w", encoding='utf-8') as dd:
+                    dd.write(f'/// {dst.stem}.h')
+                    with namespace_context(dd, namespace):
+                        write_enum(dd, node)
+
             elif isinstance(node, TypedefNode):
                 write_alias(d, node)
                 d.write('\n')
@@ -647,20 +663,21 @@ class CSharpGenerator:
                 if (self.name_count[node.name] > 1 and len(node.methods) == 0
                         and not node.base and len(node.fields) == 0):
                     print(f'forward decl: {node.name}')
-                    # maybe foward declaration
+                    # maybe forward declaration
                     continue
-                # if header.name == 'dcommon.h' and node.name == 'IDXGISurface':
-                #     # skip
-                #     continue
-
                 snippet = struct_map.get(node.name)
-                if snippet:
-                    # replace
-                    d.write(snippet)
-                else:
-                    write_struct(d, node)
 
-                d.write('\n')
+                # separate file
+                with (dst.parent / f'{node.name}.cs').open(
+                        "w", encoding='utf-8') as dd:
+                    dd.write(f'/// {dst.stem}.h')
+                    with namespace_context(dd, namespace):
+                        if snippet:
+                            # replace
+                            dd.write(snippet)
+                        else:
+                            write_struct(dd, node)
+
             elif isinstance(node, FunctionNode):
                 functions.append(node)
 
