@@ -70,15 +70,15 @@ struct_map = {
     'D3D11_AUTHENTICATED_PROTECTION_FLAGS':
     '''
 [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
-struct __MIDL___MIDL_itf_d3d11_0000_0034_0001{
-    UInt32 ProtectionEnabled;
-    UInt32 OverlayOrFullscreenRequired;
-    UInt32 Reserved;
+public struct __MIDL___MIDL_itf_d3d11_0000_0034_0001{
+    public UInt32 ProtectionEnabled;
+    public UInt32 OverlayOrFullscreenRequired;
+    public UInt32 Reserved;
 }
 [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
 public struct D3D11_AUTHENTICATED_PROTECTION_FLAGS{
-    /* (struct __MIDL___MIDL_itf_d3d11_0000_0034_0001) */__MIDL___MIDL_itf_d3d11_0000_0034_0001 Flags;
-    /* (UINT) */UInt32 Value;
+    public /* (struct __MIDL___MIDL_itf_d3d11_0000_0034_0001) */__MIDL___MIDL_itf_d3d11_0000_0034_0001 Flags;
+    public /* (UINT) */UInt32 Value;
 }
 ''',
     'D2D_MATRIX_3X2_F':
@@ -585,6 +585,7 @@ class CSharpGenerator:
         self.used: Set[str] = set()
         # 前方宣言の判定
         self.name_count: Dict[str, int] = {}
+        self.rename_map: Dict[str, str] = {}
 
     def generate_header(self,
                         header: Header,
@@ -608,6 +609,10 @@ class CSharpGenerator:
                     self.name_count[node.name] += 1
                 else:
                     self.name_count[node.name] = 1
+
+            elif isinstance(node, TypedefNode):
+                if '_' + node.name == node.typedef_type.type:
+                    self.rename_map[node.typedef_type.type] = node.name
 
         for include in header.includes:
             self._prepare(include)
@@ -643,8 +648,11 @@ class CSharpGenerator:
                               namespace: str) -> None:
         functions = []
         for node in header.nodes:
+            if node.name in self.rename_map:
+                node.name = self.rename_map[node.name]
 
             if isinstance(node, EnumNode):
+
                 # separate file
                 with (dst.parent / f'{node.name}.cs').open(
                         "w", encoding='utf-8') as dd:
@@ -653,15 +661,19 @@ class CSharpGenerator:
                         write_enum(dd, node)
 
             elif isinstance(node, TypedefNode):
+                if node.typedef_type.type in self.rename_map:
+                    continue
                 write_alias(d, node)
                 d.write('\n')
+
             elif isinstance(node, StructNode):
                 if node.is_forward:
                     continue
                 if node.name[0] == 'C':  # class
                     continue
-                if (self.name_count[node.name] > 1 and len(node.methods) == 0
-                        and not node.base and len(node.fields) == 0):
+                if (self.name_count.get(node.name, 0) > 1
+                        and len(node.methods) == 0 and not node.base
+                        and len(node.fields) == 0):
                     print(f'forward decl: {node.name}')
                     # maybe forward declaration
                     continue
@@ -682,7 +694,7 @@ class CSharpGenerator:
                 functions.append(node)
 
         if functions:
-            d.write(f'public static class {module_name}{{\n')
+            d.write(f'public static class {module_name.upper()}{{\n')
             for m in header.macro_defnitions:
                 write_const(d, m)
             dll = dll_map.get(header.name)
