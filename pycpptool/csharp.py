@@ -64,6 +64,9 @@ type_map = {
     'D2D1_MATRIX_3X2_F': 'D2D_MATRIX_3X2_F',
     'D2D1_MATRIX_4X4_F': 'D2D_MATRIX_4X4_F',
     'D2D1_SIZE_U': 'D2D_SIZE_U',
+    'ID3DBlob': 'ID3D10Blob',
+    'LPD3DBLOB': 'ID3D10Blob',
+    'LPD3DINCLUDE': 'ID3DInclude',
 }
 
 struct_map = {
@@ -201,7 +204,7 @@ public struct D2D_MATRIX_5X4_F
 func_map = {
     'D3D11CreateDevice':
     '''
-    [DllImport("D3D11.dll")]
+    [DllImport("D3D11.dll", CallingConvention = CallingConvention.StdCall)]
     public static extern HRESULT D3D11CreateDevice(
         /// pAdapter: (*(IDXGIAdapter))
         IDXGIAdapter pAdapter,
@@ -227,7 +230,7 @@ func_map = {
     ''',
     'D3D11CreateDeviceAndSwapChain':
     '''
-    [DllImport("D3D11.dll")]
+    [DllImport("D3D11.dll", CallingConvention = CallingConvention.StdCall)]
     public static extern HRESULT D3D11CreateDeviceAndSwapChain(
         /// pAdapter: (*(IDXGIAdapter))
         IDXGIAdapter pAdapter,
@@ -282,6 +285,10 @@ def replace_type(m):
 def cs_type(d: Declare, is_param, level=0) -> str:
     if isinstance(d, Pointer):
         if level == 0:
+            if is_param:
+                if isinstance(d.target, BaseType):
+                    if d.target.type == 'WCHAR':
+                        return '[MarshalAs(UnmanagedType.LPWStr)]string'
             if isinstance(d.target, Pointer):
                 # double pointer
                 if isinstance(d.target.target, Pointer):
@@ -309,9 +316,9 @@ def cs_type(d: Declare, is_param, level=0) -> str:
 
         if level == 0:
             if is_param:
-                if level == 0 and isinstance(
-                        d.target, BaseType) and d.target.type == 'FLOAT':
-                    return 'ref Vector4'
+                if isinstance(d.target, BaseType):
+                    if d.target.type == 'FLOAT':
+                        return 'ref Vector4'
                 # array to pointer
                 #return f'{target}[]'
                 # for Span<T>
@@ -344,6 +351,7 @@ def cs_type(d: Declare, is_param, level=0) -> str:
 dll_map = {
     'dxgi.h': 'DXGI.dll',
     'd3d11.h': 'D3D11.dll',
+    'd3dcompiler.h': 'D3dcompiler_47.dll',
     'd2d1.h': 'D2D1.dll',
     'd2d1_1.h': 'D2D1.dll',
     'dwrite.h': 'Dwrite.dll',
@@ -354,6 +362,13 @@ def write_const(d: TextIO, m) -> None:
     value = m.value
     if '__declspec' in value:
         return
+
+    if m.name in [
+            'D3DCOMPILER_DLL_W', 'D3DCOMPILER_DLL_A', 'D3DCOMPILER_DLL',
+            'D3D_COMPILE_STANDARD_FILE_INCLUDE'
+    ]:
+        return
+
     if value == 'UINT_MAX':
         value = 'UInt32.MaxValue'
     d.write(f'public const int {m.name} = unchecked((int){value});\n')
@@ -403,6 +418,8 @@ def write_alias(d: TextIO, node: TypedefNode) -> None:
         if node.name.startswith('D2D1_') and typedef_type.startswith(
                 'D2D_') and node.name[5:] == typedef_type[4:]:
             return
+        if node.name in type_map.keys():
+            return
         d.write(
             '[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]\n')
         d.write(f'public struct {node.name}{{\n')
@@ -435,7 +452,9 @@ def write_function(d: TextIO, m: FunctionNode, indent='', extern='',
     params = [(cs_type(p.param_type, True), p.param_name) for p in m.params]
 
     if extern:
-        d.write(f'[DllImport("{extern}")]\n')
+        d.write(
+            f'[DllImport("{extern}", CallingConvention = CallingConvention.StdCall)]\n'
+        )
         d.write(f'{indent}public static extern {ret} {m.name}(\n')
     else:
         # for com interface
@@ -705,6 +724,10 @@ class CSharpGenerator:
                 if f.name in used_function:
                     continue
                 used_function.add(f.name)
+
+                if f.name in ['D3DDisassemble10Effect']:
+                    # ignore
+                    continue
 
                 func = func_map.get(f.name)
                 if func:
