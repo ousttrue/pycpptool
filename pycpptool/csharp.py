@@ -538,9 +538,9 @@ def write_struct(d: TextIO, node: StructNode) -> None:
         d.write(f'}}\n')
     else:
 
+        d.write(f'[Annotation(Size={node.size})]\n')
         if any(x.field_type == 'union' for x in node.fields):
             # include union
-            d.write(f'[Annotation(Size={node.size})]\n')
             d.write(
                 '[StructLayout(LayoutKind.Explicit, CharSet = CharSet.Unicode)]\n'
             )
@@ -565,7 +565,6 @@ def write_struct(d: TextIO, node: StructNode) -> None:
 
         else:
 
-            d.write(f'[Annotation(Size={node.size})]\n')
             d.write(
                 '[StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]\n'
             )
