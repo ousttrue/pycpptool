@@ -6,7 +6,7 @@ import pathlib
 import logging
 from typing import List, Optional, Set, TextIO, NamedTuple
 from clang import cindex
-from . import struct_alignment, csharp, dlang, cindex_parser
+from . import struct_alignment, csharp, dlang, cindex_parser, get_tu
 logger = logging.getLogger(__name__)
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -119,15 +119,15 @@ class Parsed(NamedTuple):
             raise Exception()
 
     def _debug(self):
-        tu = cindex_parser.get_tu(self.path, self.include_path_list)
+        tu = get_tu.get_tu(self.path, self.include_path_list)
         show(sys.stdout, tu, self.path)
 
     def _parse(self):
         headers = cindex_parser.parse(
-            cindex_parser.get_tu(self.path, self.include_path_list),
+            get_tu.get_tu(self.path, self.include_path_list),
             self.include)
         cindex_parser.parse_macro(
-            headers, cindex_parser.get_tu(path, self.include_path_list, True),
+            headers, get_tu.get_tu(self.path, self.include_path_list, True),
             self.include)
         headers[self.path].print_nodes()
 
@@ -136,17 +136,17 @@ class Parsed(NamedTuple):
         if not generator:
             raise RuntimeError(f'no such genrator: {self.generator}')
 
-        header_name = self.path if not self.multi_header else self.include[0] 
+        header_name = self.path if not self.multi_header else self.include[0]
 
         logger.debug(f'parse1 headers... {header_name}')
         headers = cindex_parser.parse(
-            cindex_parser.get_tu(self.path, self.include_path_list),
+            get_tu.get_tu(self.path, self.include_path_list),
             self.include)
 
         logger.debug(f'parse2 macros... {header_name}')
         cindex_parser.parse_macro(
             headers,
-            cindex_parser.get_tu(self.path, self.include_path_list, True),
+            get_tu.get_tu(self.path, self.include_path_list, True),
             self.include)
 
         logger.debug(f'generate... {self.generator} => {self.outfolder}')
@@ -160,7 +160,11 @@ def parse(args: argparse.Namespace) -> Parsed:
     include = []
     include_path_list = []
     kit_name = ''
-    if hasattr(args, 'include'):
+    tmp_name = ''
+    outfolder = str(args.outfolder) if hasattr(args, 'outfolder') else ''
+    namespace = args.namespace if hasattr(args, 'namespace') else ''
+    generator = args.generator if hasattr(args, 'generator') else ''
+    if hasattr(args, 'include') and args.include:
         include += [cindex_parser.normalize(x) for x in args.include]
 
     # entrypoint
@@ -189,9 +193,9 @@ def parse(args: argparse.Namespace) -> Parsed:
         'kit_name': kit_name,
         'path': path,
         'action': args.action,
-        'outfolder': str(args.outfolder),
-        'namespace': args.namespace,
-        'generator': args.generator,
+        'outfolder': outfolder,
+        'namespace': namespace,
+        'generator': generator,
         'multi_header': multi_header,
     }
     return Parsed(**obj)
