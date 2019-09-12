@@ -17,22 +17,52 @@ from clang import cindex
 def tmp(src):
     fd, tmp_name = tempfile.mkstemp(prefix='tmpheader_', suffix='.h')
     os.close(fd)
-    f = open(tmp_name, 'w', encoding='utf-8')
+    with open(tmp_name, 'w', encoding='utf-8') as f:
+        f.write(src)
     try:
         yield pathlib.Path(tmp_name)
     finally:
-        f.close()
         os.unlink(tmp_name)
 
 
 class CIndexTest(unittest.TestCase):
     def test_int(self) -> None:
-        with tmp('int x = 0;') as path:
+        with tmp('int x = 123;') as path:
             tu = get_tu(path)
             self.assertIsInstance(tu, cindex.TranslationUnit)
-            c = tu.cursor
+
+            # TRANSLATION_UNIT
+            c: cindex.Cursor = tu.cursor
             self.assertIsInstance(c, cindex.Cursor)
-            print(c)
+            self.assertEqual(cindex.CursorKind.TRANSLATION_UNIT, c.kind)
+            self.assertIsNone(c.location.file)
+
+            # VAR_DECL: int x
+            children = [child for child in c.get_children()]
+            self.assertEqual(1, len(children))
+            c = children[0]
+            self.assertEqual(str(path), c.location.file.name)
+
+            self.assertEqual(cindex.CursorKind.VAR_DECL, c.kind)
+            self.assertEqual('x', c.spelling)
+            self.assertEqual('x', c.displayname)
+
+            # INTEGER_LITERAL: = 123
+            children = [child for child in c.get_children()]
+            self.assertEqual(1, len(children))
+            c = children[0]
+
+            self.assertEqual(cindex.CursorKind.INTEGER_LITERAL, c.kind)
+            self.assertEqual(c.type.kind, cindex.TypeKind.INT)
+
+            tokens = [t.spelling for t in c.get_tokens()]
+            self.assertEqual(1, len(children))
+            value = int(tokens[0])
+            self.assertEqual(123, value)
+
+            children = [child for child in c.get_children()]
+            self.assertEqual(0, len(children))
+            print()
 
 
 if __name__ == '__main__':
