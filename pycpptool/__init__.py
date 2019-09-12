@@ -4,7 +4,7 @@ import tempfile
 import sys
 import pathlib
 import logging
-from typing import List, Optional, Set, TextIO
+from typing import List, Optional, Set, TextIO, NamedTuple
 from clang import cindex
 from . import struct_alignment, csharp, dlang, cindex_parser
 logger = logging.getLogger(__name__)
@@ -52,14 +52,15 @@ def show(f: TextIO, tu: cindex.TranslationUnit, path: pathlib.Path) -> None:
         traverse(c)
 
 
-def main() -> None:
-    logging.basicConfig(
-        level=logging.DEBUG,
-        datefmt='%H:%M:%S',
-        format='%(asctime)s[%(levelname)s][%(name)s.%(funcName)s] %(message)s')
+generators = {
+    'csharp': csharp.generate,
+    'dlang': dlang.generate,
+    'struct': struct_alignment.generate,
+}
 
+
+def setup_parser() -> argparse.ArgumentParser:
     arg_parser = argparse.ArgumentParser(description='Process cpp header.')
-
     sub = arg_parser.add_subparsers()
 
     # debug
@@ -82,85 +83,133 @@ def main() -> None:
     sub_gen.add_argument('-i', '--include', action='append')
     sub_gen.add_argument('-n', '--namespace')
 
-    generators = {
-        'csharp': csharp.generate,
-        'dlang': dlang.generate,
-        'struct': struct_alignment.generate,
-    }
-
     sub_gen.add_argument('-g',
                          '--generator',
                          help='code generator',
                          choices=generators.keys(),
                          required=True)
 
-    # execute
-    args = arg_parser.parse_args()
+    return arg_parser
 
-    tmp_name = None
-    try:
-        include = []
-        if args.include:
-            include += [cindex_parser.normalize(x) for x in args.include]
 
-        kit_name = ''
-        include_path_list: List[str] = []
+class Parsed(NamedTuple):
+    path: pathlib.Path
+    multi_header: bool
+    include: List[str]
+    include_path_list: List[str]
+    tmp_name: str
+    kit_name: str
+    action: str
+    namespace: str
+    outfolder: str
+    generator: str
 
-        multi_header = len(args.entrypoint) > 1
-        if multi_header:
-            fd, tmp_name = tempfile.mkstemp(prefix='tmpheader_', suffix='.h')
-            os.close(fd)
-            with open(tmp_name, 'w', encoding='utf-8') as f:
-                for e in args.entrypoint:
-                    e_path = pathlib.Path(e)
-                    f.write(f'#include "{e_path.name}"\n')
-                    include_path_list.append(e_path.parent)
-                    include.append(cindex_parser.normalize(e_path.name))
-                    kit_name = e_path.parent.parent.name
+    def clean_tmp(self):
+        if self.tmp_name:
+            os.unlink(self.tmp_name)
 
-            path = pathlib.Path(tmp_name)
-        else:
-            path = pathlib.Path(args.entrypoint[0]).resolve()
-            kit_name = path.parent.parent.name
-        include.append(path.name)
-
-        if args.action == 'debug':
-            tu = cindex_parser.get_tu(path, include_path_list)
-            show(sys.stdout, tu, path)
-
-        elif args.action == 'parse':
-            headers = cindex_parser.parse(
-                cindex_parser.get_tu(path, include_path_list), include)
-            cindex_parser.parse_macro(
-                headers, cindex_parser.get_tu(path, include_path_list, True),
-                include)
-            headers[path].print_nodes()
-
-        elif args.action == 'gen':
-            logger.debug('parse...')
-            headers = cindex_parser.parse(
-                cindex_parser.get_tu(path, include_path_list), include)
-            # for k, v in headers.items():
-            #    print(k, len(v.nodes))
-            logger.debug('parse_macro...')
-            cindex_parser.parse_macro(
-                headers, cindex_parser.get_tu(path, include_path_list, True),
-                include)
-
-            logger.debug('generate...')
-            generator = generators.get(args.generator)
-            if not generator:
-                raise RuntimeError(f'no such genrator: {args.generator}')
-
-            root = pathlib.Path(str(args.outfolder)).resolve()
-            generator(headers[path], root, kit_name, args.namespace,
-                      multi_header)
-
+    def process(self):
+        if self.action == 'debug':
+            self._debug()
+        elif self.action == 'parse':
+            self._parse()
+        elif self.action == 'gen':
+            self._gen()
         else:
             raise Exception()
+
+    def _debug(self):
+        tu = cindex_parser.get_tu(self.path, self.include_path_list)
+        show(sys.stdout, tu, self.path)
+
+    def _parse(self):
+        headers = cindex_parser.parse(
+            cindex_parser.get_tu(self.path, self.include_path_list),
+            self.include)
+        cindex_parser.parse_macro(
+            headers, cindex_parser.get_tu(path, self.include_path_list, True),
+            self.include)
+        headers[self.path].print_nodes()
+
+    def _gen(self):
+        generator = generators.get(self.generator)
+        if not generator:
+            raise RuntimeError(f'no such genrator: {self.generator}')
+
+        header_name = self.path if not self.multi_header else self.include[0] 
+
+        logger.debug(f'parse1 headers... {header_name}')
+        headers = cindex_parser.parse(
+            cindex_parser.get_tu(self.path, self.include_path_list),
+            self.include)
+
+        logger.debug(f'parse2 macros... {header_name}')
+        cindex_parser.parse_macro(
+            headers,
+            cindex_parser.get_tu(self.path, self.include_path_list, True),
+            self.include)
+
+        logger.debug(f'generate... {self.generator} => {self.outfolder}')
+        root = pathlib.Path(self.outfolder).resolve()
+        entry_point = headers[self.path]
+        generator(entry_point, root, self.kit_name, self.namespace,
+                  self.multi_header)
+
+
+def parse(args: argparse.Namespace) -> Parsed:
+    include = []
+    include_path_list = []
+    kit_name = ''
+    if hasattr(args, 'include'):
+        include += [cindex_parser.normalize(x) for x in args.include]
+
+    # entrypoint
+    multi_header = len(args.entrypoint) > 1
+    if multi_header:
+        fd, tmp_name = tempfile.mkstemp(prefix='tmpheader_', suffix='.h')
+        os.close(fd)
+        with open(tmp_name, 'w', encoding='utf-8') as f:
+            for e in args.entrypoint:
+                e_path = pathlib.Path(e)
+                f.write(f'#include "{e_path.name}"\n')
+                include_path_list.append(e_path.parent)
+                include.append(cindex_parser.normalize(e_path.name))
+                kit_name = e_path.parent.parent.name
+
+        path = pathlib.Path(tmp_name)
+    else:
+        path = pathlib.Path(args.entrypoint[0]).resolve()
+        kit_name = path.parent.parent.name
+    include.append(path.name)
+
+    obj = {
+        'include': include,
+        'include_path_list': include_path_list,
+        'tmp_name': tmp_name,
+        'kit_name': kit_name,
+        'path': path,
+        'action': args.action,
+        'outfolder': str(args.outfolder),
+        'namespace': args.namespace,
+        'generator': args.generator,
+        'multi_header': multi_header,
+    }
+    return Parsed(**obj)
+
+
+def main() -> None:
+    logging.basicConfig(
+        level=logging.DEBUG,
+        datefmt='%H:%M:%S',
+        format='%(asctime)s[%(levelname)s][%(name)s.%(funcName)s] %(message)s')
+
+    parser = setup_parser()
+    params = parse(parser.parse_args())
+
+    try:
+        params.process()
     finally:
-        if tmp_name:
-            os.unlink(tmp_name)
+        params.clean_tmp()
 
 
 if __name__ == '__main__':
