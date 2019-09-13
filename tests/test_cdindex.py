@@ -36,32 +36,107 @@ class CIndexTest(unittest.TestCase):
             self.assertIsInstance(c, cindex.Cursor)
             self.assertEqual(cindex.CursorKind.TRANSLATION_UNIT, c.kind)
             self.assertIsNone(c.location.file)
-
-            # VAR_DECL: int x
             children = [child for child in c.get_children()]
             self.assertEqual(1, len(children))
+
+            # VAR_DECL: int x
             c = children[0]
             self.assertEqual(str(path), c.location.file.name)
 
             self.assertEqual(cindex.CursorKind.VAR_DECL, c.kind)
             self.assertEqual('x', c.spelling)
             self.assertEqual('x', c.displayname)
-
-            # INTEGER_LITERAL: = 123
             children = [child for child in c.get_children()]
             self.assertEqual(1, len(children))
+
+            # INTEGER_LITERAL: = 123
             c = children[0]
 
             self.assertEqual(cindex.CursorKind.INTEGER_LITERAL, c.kind)
             self.assertEqual(c.type.kind, cindex.TypeKind.INT)
 
             tokens = [t.spelling for t in c.get_tokens()]
-            self.assertEqual(1, len(children))
             value = int(tokens[0])
             self.assertEqual(123, value)
 
             children = [child for child in c.get_children()]
             self.assertEqual(0, len(children))
+            print()
+
+    def test_void_ptr(self) -> None:
+        #
+        # tu
+        #  VAR_DECL: x
+        #    UNEXPOSED_EXPR: =
+        #       CXX_NULL_PTR_LITERAL_EXPR: nullptr
+        with tmp('void *x = nullptr;') as path:
+            tu = get_tu(path)
+            self.assertIsInstance(tu, cindex.TranslationUnit)
+
+            # TRANSLATION_UNIT
+            c: cindex.Cursor = tu.cursor
+            self.assertIsInstance(c, cindex.Cursor)
+            self.assertEqual(cindex.CursorKind.TRANSLATION_UNIT, c.kind)
+            self.assertIsNone(c.location.file)
+            children = [child for child in c.get_children()]
+            self.assertEqual(1, len(children))
+
+            # VAR_DECL: int x
+            c = children[0]
+            self.assertEqual(str(path), c.location.file.name)
+            self.assertEqual(cindex.CursorKind.VAR_DECL, c.kind)
+            self.assertEqual('x', c.spelling)
+            self.assertEqual('x', c.displayname)
+            self.assertEqual(c.type.kind, cindex.TypeKind.POINTER)
+            self.assertEqual('void *', c.type.spelling)
+            children = [child for child in c.get_children()]
+            self.assertEqual(1, len(children))
+
+            # POINTER: void* x = nullptr
+            c = children[0]
+            self.assertEqual(cindex.CursorKind.UNEXPOSED_EXPR, c.kind)
+            self.assertEqual(c.type.kind, cindex.TypeKind.POINTER)
+            self.assertEqual('void *', c.type.spelling)
+            children = [child for child in c.get_children()]
+            self.assertEqual(1, len(children))
+
+            # nullptr
+            c = children[0]
+
+            self.assertEqual(cindex.CursorKind.CXX_NULL_PTR_LITERAL_EXPR,
+                             c.kind)
+            self.assertEqual(c.type.kind, cindex.TypeKind.NULLPTR)
+            print()
+
+    def test_int_ptr(self) -> None:
+        #
+        # tu
+        #  VAR_DECL: x
+        with tmp('int *x;') as path:
+            tu = get_tu(path)
+            self.assertIsInstance(tu, cindex.TranslationUnit)
+
+            # TRANSLATION_UNIT
+            c: cindex.Cursor = tu.cursor
+            self.assertIsInstance(c, cindex.Cursor)
+            self.assertEqual(cindex.CursorKind.TRANSLATION_UNIT, c.kind)
+            self.assertIsNone(c.location.file)
+            children = [child for child in c.get_children()]
+            self.assertEqual(1, len(children))
+
+            # VAR_DECL: int* x
+            c = children[0]
+            self.assertEqual(str(path), c.location.file.name)
+
+            self.assertEqual(cindex.CursorKind.VAR_DECL, c.kind)
+            self.assertEqual('x', c.spelling)
+            self.assertEqual('x', c.displayname)
+            self.assertEqual(c.type.kind, cindex.TypeKind.POINTER)
+            self.assertEqual('int *', c.type.spelling)
+
+            children = [child for child in c.get_children()]
+            self.assertEqual(0, len(children))
+
             print()
 
 
